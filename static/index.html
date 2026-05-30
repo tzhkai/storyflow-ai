@@ -921,8 +921,8 @@
       <select id="writing-style-select" style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;outline:none">
         <option value="literary">文学写实（克制精准）</option>
         <option value="colloquial">口语化（接地气）</option>
-        <option value="hardcore" data-locked="true">硬核简洁（极简叙事）🔒</option>
-        <option value="poetic" data-locked="true">诗意浪漫（有节制修辞）🔒</option>
+        <option value="hardcore">硬核简洁（极简叙事）</option>
+        <option value="poetic">诗意浪漫（有节制修辞）</option>
       </select>
     </div>
     <div class="spacer"></div>
@@ -1299,7 +1299,7 @@ function updateStyleLock() {
   sel.querySelectorAll('option').forEach(opt => {
     const locked = !allowedStyles.includes(opt.value);
     opt.disabled = locked;
-    opt.textContent = locked ? opt.textContent.replace(' 🔒', '') + ' 🔒' : opt.textContent.replace(' 🔒', '');
+    opt.textContent = locked ? opt.textContent.replace(/🔒/g, '').trim() + ' 🔒' : opt.textContent.replace(/🔒/g, '').trim();
   });
 }
 
