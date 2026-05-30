@@ -1,0 +1,2899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 小说工坊 · StoryFlow</title>
+<style>
+  /* ============ 基础变量 ============ */
+  :root {
+    --bg: #0f0f13;
+    --bg2: #16161e;
+    --bg3: #1e1e2a;
+    --border: #2a2a3a;
+    --border2: #3a3a50;
+    --text: #e2e2f0;
+    --text2: #9090b0;
+    --text3: #6060a0;
+    --accent: #7c6af7;
+    --accent2: #6366f1;
+    --green: #10b981;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --cyan: #06b6d4;
+    --pink: #ec4899;
+    --shadow: rgba(0,0,0,0.5);
+    --node-w: 280px;
+    --glow: 0 0 20px rgba(124,106,247,0.3);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'PingFang SC', 'Microsoft YaHei', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ============ 顶部栏 ============ */
+  #topbar {
+    height: 52px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    z-index: 100;
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-size: 18px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #7c6af7, #06b6d4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.5px;
+    margin-right: 8px;
+  }
+
+  .logo-sub { font-size: 11px; color: var(--text3); font-weight: 400; }
+
+  #topbar .sep { width: 1px; height: 24px; background: var(--border); }
+
+  .btn {
+    padding: 6px 14px;
+    border-radius: 7px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+  .btn:active { transform: translateY(0); }
+
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border2); }
+  .btn-green { background: var(--green); color: #fff; }
+  .btn-orange { background: var(--orange); color: #fff; }
+  .btn-red { background: var(--red); color: #fff; }
+  .btn-icon { padding: 6px 10px; }
+
+  .spacer { flex: 1; }
+
+  #project-name-input {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 7px;
+    padding: 5px 10px;
+    font-size: 14px;
+    font-weight: 600;
+    width: 200px;
+  }
+
+  #model-badge {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: var(--text2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  #model-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+  #model-badge .dot.connected { background: var(--green); }
+
+  /* ============ 主体布局 ============ */
+  #main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ============ 左侧面板 ============ */
+  #sidebar {
+    width: 220px;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+
+  .sidebar-section { padding: 12px; border-bottom: 1px solid var(--border); }
+  .sidebar-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text3); margin-bottom: 8px; }
+
+  .node-palette-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 7px;
+    cursor: grab;
+    border: 1px solid transparent;
+    margin-bottom: 4px;
+    font-size: 13px;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .node-palette-item:hover { background: var(--bg3); border-color: var(--border2); }
+  .node-palette-item:active { cursor: grabbing; opacity: 0.7; }
+  .node-palette-item .icon { font-size: 16px; }
+  .node-palette-item .label { font-size: 13px; color: var(--text); }
+  .node-palette-item .sublabel { font-size: 11px; color: var(--text3); }
+
+  #sidebar-projects { flex: 1; overflow-y: auto; padding: 12px; }
+  .project-item {
+    padding: 8px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    margin-bottom: 4px;
+    font-size: 13px;
+    transition: all 0.15s;
+  }
+  .project-item:hover { background: var(--bg3); border-color: var(--border2); }
+  .project-item.active { background: var(--accent2); border-color: var(--accent); }
+  .project-item .proj-name { font-weight: 600; }
+  .project-item .proj-time { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  /* ============ 画布区 ============ */
+  #canvas-area {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0);
+    background-size: 28px 28px;
+  }
+
+  #canvas {
+    position: absolute;
+    transform-origin: 0 0;
+    width: 4000px;
+    height: 3000px;
+  }
+
+  /* SVG连线层 */
+  #connections-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  .connection-line {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    stroke-opacity: 0.6;
+    filter: drop-shadow(0 0 4px rgba(124,106,247,0.4));
+    transition: stroke-opacity 0.2s;
+  }
+  .connection-line:hover { stroke-opacity: 1; }
+  .connection-line.active { stroke: var(--cyan); stroke-opacity: 0.9; }
+
+  /* ============ 节点样式 ============ */
+  .node {
+    position: absolute;
+    width: var(--node-w);
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    cursor: move;
+    user-select: none;
+    transition: box-shadow 0.2s, border-color 0.2s;
+    z-index: 10;
+  }
+  .node:hover {
+    box-shadow: var(--glow);
+    border-color: var(--accent2);
+    z-index: 15;
+  }
+  .node.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(124,106,247,0.4), var(--glow);
+    z-index: 20;
+  }
+  .node.dragging {
+    box-shadow: 0 8px 32px rgba(124,106,247,0.35), var(--glow);
+    border-color: var(--accent);
+    z-index: 25;
+    transition: none;
+  }
+  .node.done .node-header { opacity: 1; }
+  .node.done { border-color: var(--green); }
+
+  .node-header {
+    padding: 10px 14px;
+    border-radius: 11px 11px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    position: relative;
+  }
+  .node-header .node-icon { font-size: 18px; }
+  .node-header .node-title { flex: 1; }
+  .node-header .node-status { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: rgba(0,0,0,0.3); }
+  .node-header .btn-delete {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: rgba(239,68,68,0.15);
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+  }
+  .node:hover .btn-delete { opacity: 1; }
+
+  .node-body { padding: 12px 14px; }
+
+  .node-port {
+    position: absolute;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--bg3);
+    border: 2px solid var(--border2);
+    cursor: crosshair;
+    transition: all 0.15s;
+    z-index: 30;
+  }
+  .node-port:hover { transform: scale(1.4); border-color: var(--accent); background: var(--accent); }
+  .node-port.port-out { right: -7px; top: 50%; transform: translateY(-50%); }
+  .node-port.port-in { left: -7px; top: 50%; transform: translateY(-50%); }
+  .node-port.port-out:hover { transform: translateY(-50%) scale(1.4); }
+  .node-port.port-in:hover { transform: translateY(-50%) scale(1.4); }
+  .node-port.connected { border-color: var(--accent); background: var(--accent); }
+
+  /* 选中内容显示 */
+  .selected-item {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .selected-item .si-name { font-weight: 700; color: var(--text); font-size: 13px; }
+  .selected-item .si-desc { color: var(--text2); margin-top: 3px; line-height: 1.4; }
+  .selected-item .si-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .si-tag { background: rgba(124,106,247,0.15); color: var(--accent); border-radius: 4px; padding: 2px 7px; font-size: 10px; }
+  .si-tag.ai { background: rgba(6,182,212,0.15); color: var(--cyan); }
+  .selected-item .btn-clear { position: absolute; top: 6px; right: 8px; background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; }
+  .selected-item .btn-clear:hover { color: var(--red); }
+
+  .node-placeholder {
+    color: var(--text3);
+    font-size: 12px;
+    font-style: italic;
+    text-align: center;
+    padding: 8px 0;
+  }
+
+  /* 节点内联输入字段 */
+  .node-field { margin-top: 8px; }
+  .node-field label { display: block; font-size: 10px; color: var(--text3); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .node-field input, .node-field select, .node-field textarea {
+    width: 100%;
+    padding: 5px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border2);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .node-field input:focus, .node-field select:focus, .node-field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .node-field textarea { min-height: 50px; resize: vertical; }
+  .node-field-row { display: flex; gap: 6px; }
+  .node-field-row .node-field { flex: 1; }
+
+  /* 操作按钮 */
+  .node-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .node-actions .btn { font-size: 11px; padding: 4px 10px; flex: 1; justify-content: center; }
+
+  /* 文本域 */
+  .node-textarea {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 7px;
+    padding: 8px;
+    font-size: 12px;
+    resize: none;
+    min-height: 60px;
+    font-family: inherit;
+    line-height: 1.5;
+  }
+  .node-textarea:focus { outline: none; border-color: var(--accent); }
+
+  /* ============ 右侧面板（预设选择器）============ */
+  #panel {
+    width: 380px;
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: transform 0.25s;
+  }
+  #panel.hidden { transform: translateX(100%); width: 0; }
+
+  .panel-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .panel-header .ph-icon { font-size: 22px; }
+  .panel-header .ph-title { font-size: 15px; font-weight: 700; flex: 1; }
+  .panel-header .btn-close { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 18px; }
+  .panel-header .btn-close:hover { color: var(--red); }
+
+  #panel-content { flex: 1; overflow-y: auto; padding: 12px; }
+
+  .preset-grid { display: flex; flex-direction: column; gap: 8px; }
+  .preset-card {
+    padding: 12px;
+    background: var(--bg3);
+    border: 1.5px solid var(--border2);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .preset-card:hover { border-color: var(--accent); background: rgba(124,106,247,0.08); }
+  .preset-card.selected { border-color: var(--accent); background: rgba(124,106,247,0.15); }
+  .preset-card.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 10px; right: 12px;
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .preset-card.ai-card { border-color: rgba(6,182,212,0.4); }
+  .preset-card.ai-card:hover { border-color: var(--cyan); background: rgba(6,182,212,0.08); }
+  .preset-card.ai-card.selected { border-color: var(--cyan); background: rgba(6,182,212,0.15); }
+  .preset-card.ai-card.selected::after { color: var(--cyan); }
+  .pc-name { font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .pc-ai-badge { font-size: 10px; background: rgba(6,182,212,0.2); color: var(--cyan); padding: 2px 6px; border-radius: 4px; }
+  .pc-desc { font-size: 12px; color: var(--text2); margin-top: 5px; line-height: 1.5; }
+  .pc-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+  .pc-tag { background: rgba(99,102,241,0.15); color: #a0a0e0; border-radius: 4px; padding: 2px 7px; font-size: 10px; }
+  .pc-tag.ai { background: rgba(6,182,212,0.1); color: var(--cyan); }
+
+  .panel-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+  }
+
+  /* AI生成加载 */
+  .ai-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    color: var(--cyan);
+    font-size: 13px;
+  }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(6,182,212,0.2);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============ 执行面板 ============ */
+  #execute-panel {
+    position: fixed;
+    right: 0; top: 0; bottom: 0;
+    width: 540px;
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 200;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  #execute-panel.show { transform: translateX(0); }
+
+  .ep-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .ep-title { font-size: 16px; font-weight: 700; flex: 1; }
+
+  #ep-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  #ep-output h1, #ep-output h2, #ep-output h3 { color: var(--accent); margin: 12px 0 6px; }
+  #ep-output .chapter-title { font-size: 18px; font-weight: 700; color: var(--cyan); margin: 16px 0 8px; }
+
+  #ep-progress {
+    height: 3px;
+    background: var(--bg3);
+    overflow: hidden;
+  }
+  #ep-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--cyan));
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  .ep-status {
+    padding: 12px 16px;
+    background: var(--bg3);
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ep-actions {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+  }
+
+  /* ============ License 面板 ============ */
+  #license-badge {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 20px; cursor: pointer;
+    font-size: 12px; font-weight: 600;
+    background: var(--bg3); border: 1px solid var(--border2);
+    transition: all .2s;
+  }
+  #license-badge:hover { border-color: var(--accent); }
+  #license-badge.free { color: var(--text3); }
+  #license-badge.standard { color: #10b981; border-color: #10b98140; background: #10b98110; }
+  #license-badge.professional { color: #f59e0b; border-color: #f59e0b40; background: #f59e0b10; }
+
+  #license-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 1100;
+    align-items: center; justify-content: center;
+  }
+  #license-modal.show { display: flex; }
+  .license-box {
+    background: var(--bg1); border-radius: 16px; padding: 32px;
+    width: 520px; max-width: 90vw; max-height: 85vh; overflow-y: auto;
+    border: 1px solid var(--border2);
+  }
+  .license-tiers {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 20px 0;
+  }
+  .tier-card {
+    border: 2px solid var(--border); border-radius: 12px; padding: 16px;
+    text-align: center; cursor: pointer; transition: all .2s; position: relative;
+  }
+  .tier-card:hover { border-color: var(--accent); }
+  .tier-card.active { border-color: var(--accent); background: var(--accent2); }
+  .tier-card .tier-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .tier-card .tier-price { font-size: 22px; font-weight: 800; color: var(--accent); margin: 8px 0; }
+  .tier-card .tier-price small { font-size: 12px; font-weight: 400; color: var(--text3); }
+  .tier-card .tier-features { font-size: 11px; color: var(--text2); text-align: left; margin-top: 8px; line-height: 1.8; }
+  .tier-card.current::after {
+    content: '当前'; position: absolute; top: -8px; right: -8px;
+    background: var(--accent); color: #fff; font-size: 10px;
+    padding: 2px 8px; border-radius: 10px; font-weight: 600;
+  }
+  .lock-icon { color: var(--text3); font-size: 10px; margin-left: 2px; cursor: help; }
+
+  /* ============ 模型配置弹窗 ============ */
+  #model-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  #model-modal.show { display: flex; }
+
+  .modal-box {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  .modal-header {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .modal-title { font-size: 16px; font-weight: 700; flex: 1; }
+  .modal-body { padding: 20px; }
+
+  .form-group { margin-bottom: 16px; }
+  .form-label { font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-section-title { font-size: 12px; font-weight: 700; color: var(--accent); margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .form-input, .form-select {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent); }
+  .form-select option { background: var(--bg2); }
+
+  .model-tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+  .model-tab {
+    padding: 7px 14px;
+    border-radius: 7px;
+    background: var(--bg3);
+    border: 1.5px solid var(--border2);
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.15s;
+  }
+  .model-tab:hover { border-color: var(--accent2); color: var(--text); }
+  .model-tab.active { background: var(--accent2); border-color: var(--accent); color: #fff; }
+
+  .test-result {
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    margin-top: 12px;
+  }
+  .test-result.ok { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: var(--green); }
+  .test-result.fail { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: var(--red); }
+
+  .modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* ============ 浮动提示 ============ */
+  #toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 9px;
+    padding: 10px 18px;
+    font-size: 13px;
+    color: var(--text);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    opacity: 0;
+    transition: all 0.25s;
+    z-index: 9999;
+    pointer-events: none;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* ============ 空状态 ============ */
+  #empty-state {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+    opacity: 0.4;
+  }
+  #empty-state .es-icon { font-size: 64px; margin-bottom: 16px; }
+  #empty-state .es-title { font-size: 22px; font-weight: 700; color: var(--text2); margin-bottom: 8px; }
+  #empty-state .es-sub { font-size: 14px; color: var(--text3); line-height: 1.6; }
+
+  /* ============ 流程进度指示器 ============ */
+  #flow-indicator {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 30px;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #flow-indicator.show { opacity: 1; }
+  .fi-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text3);
+  }
+  .fi-step.done { color: var(--green); }
+  .fi-step.active { color: var(--accent); font-weight: 700; }
+  .fi-step .fi-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border2);
+  }
+  .fi-step.done .fi-dot { background: var(--green); }
+  .fi-step.active .fi-dot { background: var(--accent); box-shadow: 0 0 6px rgba(124,106,247,0.6); }
+  .fi-arrow { color: var(--text3); font-size: 10px; }
+
+  /* 缩放控制 */
+  #zoom-controls {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    gap: 6px;
+    z-index: 50;
+    pointer-events: auto;
+  }
+  .zoom-btn {
+    width: 32px; height: 32px;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 7px;
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .zoom-btn:hover { background: var(--bg3); color: var(--text); }
+
+  /* 自定义输入节点 */
+  .custom-node .node-header { background: linear-gradient(135deg, #2d2d3d, #1e1e2a); }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+  /* 节点数量标记 */
+  .node-count-badge {
+    position: absolute;
+    top: -6px; right: -6px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 5;
+  }
+
+  /* 快速模板按钮 */
+  .template-btn {
+    padding: 8px 12px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 12px;
+    display: flex; align-items: center; gap: 6px;
+    transition: all 0.15s;
+    width: 100%;
+    margin-bottom: 6px;
+    text-align: left;
+  }
+  .template-btn:hover { border-color: var(--accent); color: var(--text); background: rgba(124,106,247,0.08); }
+  .template-btn .tb-icon { font-size: 16px; }
+
+  /* 自定义模板 */
+  .ct-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text2);
+    transition: all 0.12s;
+    margin-bottom: 3px;
+  }
+  .ct-item:hover { background: var(--bg3); color: var(--text); }
+  .ct-item .ct-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ct-item .ct-del {
+    visibility: hidden;
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.1s;
+  }
+  .ct-item:hover .ct-del { visibility: visible; }
+  .ct-item .ct-del:hover { background: rgba(239,68,68,0.2); color: var(--red); }
+</style>
+</head>
+<body>
+
+<!-- 顶部栏 -->
+<div id="topbar">
+  <div>
+    <div class="logo">✦ StoryFlow</div>
+  </div>
+  <div class="sep"></div>
+  <input id="project-name-input" type="text" value="新小说项目" placeholder="项目名称">
+  <div class="sep"></div>
+
+  <button class="btn btn-secondary btn-icon" onclick="App.newProject()" title="新建项目">📄</button>
+  <button class="btn btn-secondary btn-icon" onclick="App.saveProject()" title="保存">💾</button>
+  <button class="btn btn-secondary btn-icon" onclick="App.saveAsTemplate()" title="保存为模板">📌</button>
+  <button class="btn btn-secondary" onclick="App.clearCanvas()">🗑️ 清空</button>
+  <button class="btn btn-secondary" onclick="App.fitView()">⊞ 适应</button>
+
+  <div class="spacer"></div>
+
+  <div id="model-badge" onclick="showModelModal()">
+    <div class="dot" id="model-dot"></div>
+    <span id="model-label">未配置模型</span>
+  </div>
+
+  <div id="license-badge" class="free" onclick="showLicenseModal()">
+    <span id="license-icon">🆓</span>
+    <span id="license-text">免费版</span>
+  </div>
+
+  <button class="btn btn-primary" onclick="openExecutePanel()">▶ 开始写作</button>
+</div>
+
+<!-- 主体 -->
+<div id="main">
+
+  <!-- 左侧面板 -->
+  <div id="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">📐 流程节点</div>
+      <div id="node-palette"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">⚡ 快速模板</div>
+      <button class="template-btn" onclick="App.loadTemplate('xianxia')">
+        <span class="tb-icon">⚔️</span>仙侠修真模板
+      </button>
+      <button class="template-btn" onclick="App.loadTemplate('romance')">
+        <span class="tb-icon">💕</span>甜宠言情模板
+      </button>
+      <button class="template-btn" onclick="App.loadTemplate('scifi')">
+        <span class="tb-icon">🚀</span>科幻星际模板
+      </button>
+      <button class="template-btn" onclick="App.loadTemplate('horror')">
+        <span class="tb-icon">🕵️</span>悬疑推理模板
+      </button>
+      <button class="template-btn" onclick="App.loadTemplate('apocalypse')">
+        <span class="tb-icon">🧟</span>末世求生模板
+      </button>
+    </div>
+    <div class="sidebar-section" id="custom-templates-section" style="display:none">
+      <div class="sidebar-title">📌 我的模板</div>
+      <div id="custom-templates-list"></div>
+    </div>
+    <div style="padding: 12px; border-bottom: 1px solid var(--border);">
+      <div class="sidebar-title">📁 项目列表</div>
+    </div>
+    <div id="sidebar-projects"></div>
+  </div>
+
+  <!-- 画布 -->
+  <div id="canvas-area">
+    <div id="canvas">
+      <svg id="connections-svg"></svg>
+    </div>
+    <div id="zoom-controls">
+      <button class="zoom-btn" onclick="zoomIn()" title="放大">+</button>
+      <button class="zoom-btn" onclick="zoomReset()" title="重置" style="font-size:11px">1:1</button>
+      <button class="zoom-btn" onclick="zoomOut()" title="缩小">−</button>
+    </div>
+    <div id="empty-state">
+      <div class="es-icon">✨</div>
+      <div class="es-title">拖入节点，开始创作你的故事</div>
+      <div class="es-sub">从左侧拖入节点到画布<br>或选择一个快速模板开始</div>
+    </div>
+  </div>
+
+  <!-- 右侧预设面板 -->
+  <div id="panel" class="hidden">
+    <div class="panel-header">
+      <span class="ph-icon" id="ph-icon">📚</span>
+      <span class="ph-title" id="ph-title">选择预设</span>
+      <button class="btn-close" onclick="closePanel()">✕</button>
+    </div>
+    <div id="panel-content"></div>
+    <div class="panel-footer">
+      <button class="btn btn-secondary" id="btn-ai-gen" onclick="Panel.generateAI()" style="flex:1">
+        ✨ AI 生成更多选项
+      </button>
+      <button class="btn btn-primary" onclick="Panel.confirmSelection()" style="flex:1">
+        ✓ 确认选择
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<!-- 执行面板 -->
+<div id="execute-panel">
+  <div class="ep-header">
+    <span style="font-size:22px">✍️</span>
+    <span class="ep-title">AI 正在创作...</span>
+    <button class="btn btn-secondary btn-icon" onclick="closeExecutePanel()">✕</button>
+  </div>
+  <div id="ep-progress"><div id="ep-progress-bar"></div></div>
+  <div id="ep-output">
+    <div style="color:var(--text3); text-align:center; padding:40px; font-size:14px;">
+      <div style="font-size:48px;margin-bottom:16px">📖</div>
+      点击「开始写作」后，AI将根据你的设定开始创作...
+    </div>
+  </div>
+  <div class="ep-status" id="ep-status">
+    <div class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--text3);" id="ep-dot"></div>
+    <span id="ep-status-text">就绪</span>
+  </div>
+  <div class="ep-actions">
+    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <span style="font-size:12px;color:var(--text2)">🎨 文风</span>
+      <select id="writing-style-select" style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;outline:none">
+        <option value="literary">文学写实（克制精准）</option>
+        <option value="colloquial">口语化（接地气）</option>
+        <option value="hardcore" data-locked="true">硬核简洁（极简叙事）🔒</option>
+        <option value="poetic" data-locked="true">诗意浪漫（有节制修辞）🔒</option>
+      </select>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="startWriting()" style="flex:1" id="btn-start-write">▶ 开始写作</button>
+    <button class="btn btn-secondary" onclick="continueWriting()" id="btn-continue" style="display:none">⟳ 继续下一章</button>
+    <button class="btn btn-secondary" onclick="copyOutput()">📋 复制</button>
+    <button class="btn btn-secondary" onclick="exportOutput()">💾 导出</button>
+  </div>
+</div>
+
+<!-- License 弹窗 -->
+<div id="license-modal">
+  <div class="license-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:24px">🔑</span>
+        <span style="font-size:18px;font-weight:700">StoryFlow 授权</span>
+      </div>
+      <button onclick="closeLicenseModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:20px">✕</button>
+    </div>
+
+    <!-- 当前状态 -->
+    <div id="license-status" style="background:var(--bg3);border-radius:10px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span id="ls-tier-icon" style="font-size:20px">🆓</span>
+        <span id="ls-tier-name" style="font-weight:700;font-size:16px">免费版</span>
+      </div>
+      <div id="ls-tier-detail" style="font-size:12px;color:var(--text2);line-height:1.8"></div>
+    </div>
+
+    <!-- 三档对比 -->
+    <div class="license-tiers">
+      <div class="tier-card" data-tier="free">
+        <div class="tier-name">免费版</div>
+        <div class="tier-price">¥0</div>
+        <div class="tier-features">
+          ✅ 1个流程图<br>
+          ✅ 本地+自带Key云端<br>
+          ✅ txt导出<br>
+          ✅ 每天3次生成<br>
+          ✅ 基础去AI味<br>
+          ✅ 2种写作风格
+        </div>
+      </div>
+      <div class="tier-card" data-tier="standard">
+        <div class="tier-name">标准版</div>
+        <div class="tier-price">¥69 <small>买断</small></div>
+        <div class="tier-features">
+          ✅ 无限流程图<br>
+          ✅ 本地+云端模型<br>
+          ✅ 无限生成<br>
+          ✅ txt+PDF导出<br>
+          ✅ 完整去AI味<br>
+          ✅ 4种写作风格
+        </div>
+      </div>
+      <div class="tier-card" data-tier="professional">
+        <div class="tier-name">专业版</div>
+        <div class="tier-price">¥199 <small>买断</small></div>
+        <div class="tier-features">
+          ✅ 无限流程图<br>
+          ✅ 本地+云端模型<br>
+          ✅ 无限生成<br>
+          ✅ 全格式导出<br>
+          ✅ 自定义去AI味<br>
+          ✅ 自定义风格
+        </div>
+      </div>
+    </div>
+
+    <!-- 激活输入 -->
+    <div id="license-activate-section" style="margin-top:16px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px">📝 输入 License Key</div>
+      <div style="display:flex;gap:8px">
+        <input id="license-key-input" type="text" placeholder="SF-STD-XXXX-XXXX 或 SF-PRO-XXXX-XXXX"
+               style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;font-size:13px;font-family:monospace;outline:none">
+        <button class="btn btn-primary" onclick="activateLicense()">激活</button>
+      </div>
+      <div id="license-error" style="color:#ef4444;font-size:12px;margin-top:6px;display:none"></div>
+      <div id="license-success" style="color:#10b981;font-size:12px;margin-top:6px;display:none"></div>
+    </div>
+
+    <!-- 退回免费版 -->
+    <div id="license-deactivate-section" style="margin-top:12px;display:none">
+      <button class="btn btn-secondary" onclick="deactivateLicense()" style="font-size:12px;width:100%">
+        ↩ 退回免费版
+      </button>
+    </div>
+
+    <!-- 购买链接 -->
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--text3);text-align:center">
+      💡 购买 License Key → 
+      <a href="https://storyflow.app" target="_blank" style="color:var(--accent)">storyflow.app</a> | 
+      爱发电搜索「StoryFlow」
+    </div>
+  </div>
+</div>
+
+<!-- 模型配置弹窗 -->
+<div id="model-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span style="font-size:22px">🤖</span>
+      <span class="modal-title">AI 模型配置</span>
+      <button class="btn-close" onclick="closeModelModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="model-tabs">
+        <div class="model-tab active" onclick="selectModelTab('ollama', this)">🦙 Ollama（本地）</div>
+        <div class="model-tab" onclick="selectModelTab('lmstudio', this)">🔬 LM Studio</div>
+        <div class="model-tab" onclick="selectModelTab('openai', this)">🌐 OpenAI</div>
+        <div class="model-tab" onclick="selectModelTab('deepseek', this)">🌊 DeepSeek</div>
+        <div class="model-tab" onclick="selectModelTab('tongyi', this)">🌟 通义千问</div>
+        <div class="model-tab" onclick="selectModelTab('custom', this)">⚙️ 自定义</div>
+      </div>
+
+      <div id="model-config-ollama">
+        <div class="form-group">
+          <label class="form-label">服务地址</label>
+          <input class="form-input" id="ollama-url" value="http://localhost:11434" placeholder="http://localhost:11434">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型名称</label>
+          <input class="form-input" id="ollama-model" value="qwen2.5:7b" placeholder="qwen2.5:7b">
+          <div style="font-size:11px;color:var(--text3);margin-top:5px">测试连接后自动填充可用模型</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">可用模型（测试后刷新）</label>
+          <select class="form-select" id="ollama-model-select" onchange="document.getElementById('ollama-model').value=this.value">
+            <option value="">-- 先测试连接 --</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="model-config-lmstudio" style="display:none">
+        <div class="form-group">
+          <label class="form-label">服务地址</label>
+          <input class="form-input" id="lmstudio-url" value="http://localhost:11435" placeholder="http://localhost:11435">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型 ID</label>
+          <input class="form-input" id="lmstudio-model" placeholder="选择或输入模型ID">
+          <select class="form-select" id="lmstudio-model-select" style="margin-top:6px" onchange="document.getElementById('lmstudio-model').value=this.value">
+            <option value="">-- 先测试连接 --</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="model-config-openai" style="display:none">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" id="openai-key" type="password" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型</label>
+          <select class="form-select" id="openai-model">
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4o-mini">GPT-4o-mini</option>
+            <option value="gpt-4-turbo">GPT-4-turbo</option>
+            <option value="gpt-3.5-turbo">GPT-3.5-turbo</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="model-config-deepseek" style="display:none">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" id="deepseek-key" type="password" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型</label>
+          <select class="form-select" id="deepseek-model">
+            <option value="deepseek-chat">deepseek-chat（V3）</option>
+            <option value="deepseek-reasoner">deepseek-reasoner（R1）</option>
+          </select>
+        </div>
+        <input type="hidden" id="deepseek-url" value="https://api.deepseek.com/v1">
+      </div>
+
+      <div id="model-config-tongyi" style="display:none">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" id="tongyi-key" type="password" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型</label>
+          <select class="form-select" id="tongyi-model">
+            <option value="qwen-max">qwen-max</option>
+            <option value="qwen-plus">qwen-plus</option>
+            <option value="qwen-turbo">qwen-turbo</option>
+            <option value="qwen-long">qwen-long（超长文本）</option>
+          </select>
+        </div>
+        <input type="hidden" id="tongyi-url" value="https://dashscope.aliyuncs.com/compatible-mode/v1">
+      </div>
+
+      <div id="model-config-custom" style="display:none">
+        <div class="form-group">
+          <label class="form-label">API 地址（Base URL）</label>
+          <input class="form-input" id="custom-url" placeholder="https://your-api.com/v1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" id="custom-key" type="password" placeholder="Bearer token">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型名称</label>
+          <input class="form-input" id="custom-model" placeholder="model-name">
+        </div>
+      </div>
+
+      <!-- 通用推理参数 -->
+      <div class="form-section-title">⚙️ 推理参数（所有模型通用）</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px;">
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">max_tokens（最大输出长度）</label>
+          <input class="form-input" id="generic-max-tokens" type="number" value="4096" min="256" max="32768" step="256" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">num_ctx（上下文窗口，Ollama）</label>
+          <input class="form-input" id="generic-num-ctx" type="number" value="4096" min="512" max="131072" step="512" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">temperature（创造性）<span style="color:var(--text3)">0~2</span></label>
+          <input class="form-input" id="generic-temperature" type="number" value="0.8" min="0" max="2" step="0.05" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">top_p（核采样）<span style="color:var(--text3)">0~1</span></label>
+          <input class="form-input" id="generic-top-p" type="number" value="0.95" min="0" max="1" step="0.05" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">repeat_penalty（重复惩罚）<span style="color:var(--text3)">1~2</span></label>
+          <input class="form-input" id="generic-repeat-penalty" type="number" value="1.1" min="1" max="2" step="0.05" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">frequency_penalty（频率惩罚）<span style="color:var(--text3)">-2~2</span></label>
+          <input class="form-input" id="generic-freq-penalty" type="number" value="0.3" min="-2" max="2" step="0.1" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">presence_penalty（存在惩罚）<span style="color:var(--text3)">-2~2</span></label>
+          <input class="form-input" id="generic-pres-penalty" type="number" value="0.3" min="-2" max="2" step="0.1" style="padding:5px 8px;font-size:12px">
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;padding:4px 8px;background:var(--bg2);border-radius:6px">
+        💡 小模型建议：temperature 0.7~0.9, repeat_penalty 1.15~1.25, 提高 frequency/presence_penalty 到 0.5~0.8 可减少重复
+      </div>
+
+      <div id="test-result-area"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="testModelConnection()">🔌 测试连接</button>
+      <button class="btn btn-primary" onclick="saveModelConfig()">✓ 保存配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ============================================================
+//  全局状态
+// ============================================================
+const STATE = {
+  nodes: {},
+  edges: [],
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+  draggingNode: null,
+  draggingFrom: null, // 连线起点
+  connectingLine: null,
+  selectedNode: null,
+  modelConfig: JSON.parse(localStorage.getItem('sf_model_config') || 'null') || {},
+  modelType: localStorage.getItem('sf_model_type') || '',
+  currentTaskId: null,
+  lastOutput: '',
+  panelNodeId: null,
+  panelCategory: null,
+  presets: {},
+  _presetsError: null,
+  projects: [],
+  currentProjectId: null,
+  license: { tier: 'free', features: null },
+};
+
+// 节点类型定义
+const NODE_TYPES = [
+  { type: 'genre',        name: '体裁设定',  icon: '📚', color: '#6366f1', desc: '选择小说类型' },
+  { type: 'world',        name: '世界观',    icon: '🌍', color: '#0ea5e9', desc: '构建故事背景' },
+  { type: 'protagonist',  name: '主角设定',  icon: '🦸', color: '#10b981', desc: '塑造主角形象' },
+  { type: 'outline',      name: '故事大纲',  icon: '📋', color: '#f59e0b', desc: '规划故事走向' },
+  { type: 'conflict',     name: '核心冲突',  icon: '⚔️', color: '#ef4444', desc: '设定主要矛盾' },
+  { type: 'style',        name: '写作风格',  icon: '✍️', color: '#8b5cf6', desc: '定义文风特色' },
+  { type: 'chapter',      name: '章节规划',  icon: '📖', color: '#06b6d4', desc: '规划篇幅结构' },
+  { type: 'characters',   name: '角色设定',  icon: '🎭', color: '#ec4899', desc: '设定角色档案' },
+  { type: 'pov',          name: '叙事视角',  icon: '👁️', color: '#f97316', desc: '选择叙述方式' },
+  { type: 'setting_detail', name: '细节设定', icon: '⚙️', color: '#84cc16', desc: '丰富世界细节' },
+  { type: 'custom',       name: '自定义节点', icon: '✏️', color: '#6b7280', desc: '自由输入设定' },
+];
+
+// ============================================================
+//  License + Token + API模式 管理
+// ============================================================
+async function loadLicense() {
+  try {
+    const fr = await fetch('/api/license/features');
+    const fdata = await fr.json();
+    STATE.license = { tier: fdata.tier, features: fdata.features };
+    TIER_FEATURES_CACHE = fdata.features;
+    updateLicenseBadge();
+  } catch (e) {
+    console.warn('[license] 加载失败:', e);
+    STATE.license = { tier: 'free', features: null };
+    updateLicenseBadge();
+  }
+}
+var TIER_FEATURES_CACHE = null;
+
+function updateLicenseBadge() {
+  const badge = document.getElementById('license-badge');
+  const icon = document.getElementById('license-icon');
+  const text = document.getElementById('license-text');
+  
+  const tierConfig = {
+    free: { icon: '🆓', text: '免费版', cls: 'free' },
+    standard: { icon: '✅', text: '标准版', cls: 'standard' },
+    professional: { icon: '👑', text: '专业版', cls: 'professional' },
+  };
+  
+  const cfg = tierConfig[STATE.license.tier] || tierConfig.free;
+  icon.textContent = cfg.icon;
+  text.textContent = cfg.text;
+  badge.className = cfg.cls;
+  
+  // 更新弹窗内的状态
+  const lsIcon = document.getElementById('ls-tier-icon');
+  const lsName = document.getElementById('ls-tier-name');
+  const lsDetail = document.getElementById('ls-tier-detail');
+  if (lsIcon) lsIcon.textContent = cfg.icon;
+  if (lsName) lsName.textContent = cfg.text;
+  if (lsDetail) {
+    const f = STATE.license.features;
+    if (f) {
+      lsDetail.innerHTML = `流程图: ${f.max_flows === 999 ? '无限' : f.max_flows} | 导出: ${f.export_formats.join('/')} | 每日生成: ${f.max_daily_generations === 999 ? '无限' : f.max_daily_generations}次`;
+    }
+  }
+  
+  // 高亮当前 tier 卡片
+  document.querySelectorAll('.tier-card').forEach(c => c.classList.remove('current', 'active'));
+  const currentCard = document.querySelector(`.tier-card[data-tier="${STATE.license.tier}"]`);
+  if (currentCard) { currentCard.classList.add('current', 'active'); }
+  
+  // 显示/隐藏退回按钮
+  const deactSec = document.getElementById('license-deactivate-section');
+  if (deactSec) deactSec.style.display = STATE.license.tier !== 'free' ? 'block' : 'none';
+  
+  // 更新写作风格选择器的功能锁
+  updateStyleLock();
+}
+
+function updateStyleLock() {
+  const sel = document.getElementById('writing-style-select');
+  if (!sel) return;
+  const features = STATE.license.features;
+  const allowedStyles = features ? features.writing_styles : ['literary', 'colloquial'];
+  
+  sel.querySelectorAll('option').forEach(opt => {
+    const locked = !allowedStyles.includes(opt.value);
+    opt.disabled = locked;
+    opt.textContent = locked ? opt.textContent.replace(' 🔒', '') + ' 🔒' : opt.textContent.replace(' 🔒', '');
+  });
+}
+
+function showLicenseModal() {
+  document.getElementById('license-modal').classList.add('show');
+  document.getElementById('license-error').style.display = 'none';
+  document.getElementById('license-success').style.display = 'none';
+  updateLicenseBadge();
+}
+
+function closeLicenseModal() {
+  document.getElementById('license-modal').classList.remove('show');
+}
+
+async function activateLicense() {
+  const input = document.getElementById('license-key-input');
+  const key = input.value.trim();
+  const errEl = document.getElementById('license-error');
+  const sucEl = document.getElementById('license-success');
+  
+  errEl.style.display = 'none';
+  sucEl.style.display = 'none';
+  
+  if (!key) {
+    errEl.textContent = '请输入 License Key';
+    errEl.style.display = 'block';
+    return;
+  }
+  
+  try {
+    const r = await fetch('/api/license/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key })
+    });
+    const data = await r.json();
+    
+    if (data.ok) {
+      sucEl.textContent = data.message;
+      sucEl.style.display = 'block';
+      input.value = '';
+      await loadLicense();
+    } else {
+      errEl.textContent = data.error || '激活失败';
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = '网络错误，请重试';
+    errEl.style.display = 'block';
+  }
+}
+
+async function deactivateLicense() {
+  try {
+    await fetch('/api/license/deactivate', { method: 'POST' });
+    await loadLicense();
+    toast('已退回免费版');
+  } catch (e) {
+    toast('❌ 操作失败');
+  }
+}
+
+// 功能锁检查工具函数
+function isFeatureLocked(feature) {
+  const f = STATE.license.features;
+  if (!f) return true;
+  switch (feature) {
+    case 'unlimited_flows': return f.max_flows < 999;
+    case 'pdf_export': return !f.export_formats.includes('pdf');
+    case 'epub_export': return !f.export_formats.includes('epub');
+    case 'cloud_model': return !f.cloud_model;
+    case 'full_styles': return f.writing_styles.length < 4;
+    case 'custom_style': return !f.writing_styles.includes('custom');
+    default: return false;
+  }
+}
+
+// ============================================================
+//  初始化
+// ============================================================
+async function init() {
+  renderPalette();
+  await loadPresets();
+  await loadProjects();
+  await loadCustomTemplates();
+  await loadLicense();
+  updateModelBadge();
+  setupCanvasEvents();
+}
+
+function renderPalette() {
+  const el = document.getElementById('node-palette');
+  el.innerHTML = NODE_TYPES.map(t => `
+    <div class="node-palette-item" draggable="true" 
+         data-type="${t.type}"
+         ondragstart="onPaletteDragStart(event, '${t.type}')"
+         ondblclick="App.addNode('${t.type}', 300, 200 + Math.random()*200)">
+      <span class="icon">${t.icon}</span>
+      <div>
+        <div class="label">${t.name}</div>
+        <div class="sublabel">${t.desc}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadPresets() {
+  let lastErr;
+
+  // 先做连通性预检
+  try {
+    const ping = await fetch('/api/presets', { method: 'HEAD' });
+    console.log('[loadPresets] 服务器连通性: OK (' + ping.status + ')');
+  } catch(e) {
+    STATE._presetsError = '网络不通: ' + e.message;
+    console.error('[loadPresets] 连通性检测失败:', e.message);
+    return;
+  }
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch('/api/presets');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      if (data && Object.keys(data).length > 0) {
+        STATE.presets = data;
+        console.log('[loadPresets] 成功加载', Object.keys(data).length, '个类别');
+        return;
+      }
+      throw new Error('empty response');
+    } catch(e) {
+      lastErr = e;
+      console.warn('[loadPresets] 第' + (attempt+1) + '次失败:', e.message);
+      if (attempt < 2) await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  // 保存错误供 Panel 显示
+  STATE._presetsError = (lastErr && lastErr.message) || '未知错误';
+  console.error('[loadPresets] 最终失败:', STATE._presetsError);
+}
+
+async function loadProjects() {
+  try {
+    const r = await fetch('/api/projects');
+    STATE.projects = await r.json();
+    renderProjectList();
+  } catch(e) {}
+}
+
+function renderProjectList() {
+  const el = document.getElementById('sidebar-projects');
+  if (STATE.projects.length === 0) {
+    el.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:12px;text-align:center">暂无项目，新建一个吧</div>';
+    return;
+  }
+  el.innerHTML = STATE.projects.slice().reverse().map(p => `
+    <div class="project-item ${p.id === STATE.currentProjectId ? 'active' : ''}" 
+         onclick="App.loadProject('${p.id}')">
+      <div class="proj-name">${p.name}</div>
+      <div class="proj-time">${new Date(p.updated * 1000).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+//  节点系统
+// ============================================================
+const App = {
+  addNode(type, x, y) {
+    const def = NODE_TYPES.find(t => t.type === type);
+    if (!def) return;
+    const id = 'node_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+    const node = { id, type, x, y, selected: null, custom_text: '' };
+    STATE.nodes[id] = node;
+    renderNode(node, def);
+    updateEmpty();
+    updateFlowIndicator();
+    return id;
+  },
+
+  removeNode(id) {
+    delete STATE.nodes[id];
+    document.getElementById(id)?.remove();
+    STATE.edges = STATE.edges.filter(e => e.from !== id && e.to !== id);
+    renderConnections();
+    updateEmpty();
+    updateFlowIndicator();
+  },
+
+  clearCanvas() {
+    if (!confirm('确定清空画布？')) return;
+    Object.keys(STATE.nodes).forEach(id => document.getElementById(id)?.remove());
+    STATE.nodes = {};
+    STATE.edges = [];
+    renderConnections();
+    updateEmpty();
+    updateFlowIndicator();
+    toast('画布已清空');
+  },
+
+  fitView() {
+    const nodeList = Object.values(STATE.nodes);
+    if (nodeList.length === 0) return;
+    const xs = nodeList.map(n => n.x), ys = nodeList.map(n => n.y);
+    const minX = Math.min(...xs), minY = Math.min(...ys);
+    STATE.offsetX = 60 - minX;
+    STATE.offsetY = 80 - minY;
+    STATE.scale = 1;
+    updateCanvasTransform();
+  },
+
+  async saveProject() {
+    const name = document.getElementById('project-name-input').value || '新项目';
+    const flowConfig = buildFlowConfig();
+    const data = {
+      name,
+      nodes: Object.values(STATE.nodes),
+      edges: STATE.edges,
+      settings: { model: STATE.modelConfig, modelType: STATE.modelType },
+      flow_config: flowConfig
+    };
+    try {
+      let r;
+      if (STATE.currentProjectId) {
+        r = await fetch(`/api/projects/${STATE.currentProjectId}`, {
+          method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+        });
+      } else {
+        r = await fetch('/api/projects', {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+        });
+        const proj = await r.json();
+        STATE.currentProjectId = proj.id;
+      }
+      await loadProjects();
+      toast('✅ 项目已保存');
+    } catch(e) { toast('❌ 保存失败: ' + e.message); }
+  },
+
+  async loadProject(id) {
+    try {
+      const r = await fetch(`/api/projects/${id}`);
+      const proj = await r.json();
+      STATE.currentProjectId = id;
+      document.getElementById('project-name-input').value = proj.name;
+      
+      // 清空画布
+      Object.keys(STATE.nodes).forEach(id => document.getElementById(id)?.remove());
+      STATE.nodes = {};
+      STATE.edges = [];
+      
+      // 恢复节点
+      (proj.nodes || []).forEach(n => {
+        STATE.nodes[n.id] = n;
+        const def = NODE_TYPES.find(t => t.type === n.type);
+        if (def) renderNode(n, def);
+      });
+      STATE.edges = proj.edges || [];
+      renderConnections();
+      updateEmpty();
+      updateFlowIndicator();
+      renderProjectList();
+      toast('📂 项目已加载');
+    } catch(e) { toast('❌ 加载失败'); }
+  },
+
+  newProject() {
+    STATE.currentProjectId = null;
+    App.clearCanvas();
+    document.getElementById('project-name-input').value = '新小说项目';
+    renderProjectList();
+  },
+
+  loadTemplate(type) {
+    if (Object.keys(STATE.nodes).length > 0) {
+      if (!confirm('加载模板会清空当前画布，确定继续？')) return;
+    }
+    App.clearCanvas();
+
+    const templates = {
+      xianxia: {
+        name: '仙侠修真小说',
+        nodes: [
+          { type: 'genre', x: 60, y: 60, selected: { id:'xianxia', name:'仙侠修真', desc:'修仙问道，飞升成仙', tags:['修炼','丹药','飞剑','宗门'] }},
+          { type: 'world', x: 370, y: 60, selected: { id:'w1', name:'东方大陆', desc:'以东方文化为基底，有修炼体系、宗门制度，大陆分为若干国家，灵气充沛', tags:['修炼','宗门','灵气','大陆'] }},
+          { type: 'protagonist', x: 680, y: 60, selected: { id:'p1', name:'废材逆袭型', desc:'起点极低，被人看不起，因机缘觉醒，一步步登顶', tags:['废材','觉醒','逆袭','天赋隐藏'] }, char_name: '叶辰' },
+          { type: 'outline', x: 60, y: 280, selected: { id:'o1', name:'英雄成长弧', desc:'起点→磨难→觉醒→巅峰，标准英雄成长之路', tags:['成长','磨难','觉醒','巅峰'] }},
+          { type: 'conflict', x: 370, y: 280, selected: { id:'c1', name:'强弱对立', desc:'主角以弱胜强，不断突破自身极限', tags:['以弱胜强','突破','极限','强敌'] }},
+          { type: 'style', x: 680, y: 280, selected: { id:'s1', name:'爽文流畅', desc:'节奏快，爽点密集，少废话，打脸情节多', tags:['爽文','快节奏','爽点','打脸'] }},
+          { type: 'chapter', x: 60, y: 500, selected: { id:'ch3', name:'长篇（100+章）', desc:'大体量网文，每章2000-3000字，多线发展，层层递进', tags:['长篇','网文','多线'] }, word_count: 2500, chapter_count: 120 },
+          { type: 'characters', x: 370, y: 500, selected: { id:'cr1', name:'导师/师傅型', desc:'主角的引路人，拥有深厚的学识或实力，关键时刻给予指导和帮助', tags:['导师','秘密','实力','引路'] }, char_name: '玄清真人', char_role: '师傅', char_desc: '外表鹤发童颜，实则修为深不可测，对叶辰有特殊期待' },
+          { type: 'pov', x: 680, y: 500, selected: { id:'pov2', name:'第三人称有限视角', desc:'「他/她」叙述，但仅限主角视角，既有客观叙述又有内心描写', tags:['第三人称','有限','平衡'] }},
+          { type: 'setting_detail', x: 370, y: 720, selected: { id:'sd1', name:'等级体系', desc:'建立清晰的实力等级体系：凡人→炼气→筑基→金丹→元婴→化神→合体→大乘', tags:['等级','晋升','体系'] }},
+        ]
+      },
+      romance: {
+        name: '甜宠言情小说',
+        nodes: [
+          { type: 'genre', x: 60, y: 60, selected: { id:'female_lead', name:'女频甜宠', desc:'强强联合，宠溺无边', tags:['霸总','甜宠','腹黑','婚后'] }},
+          { type: 'world', x: 370, y: 60, selected: { id:'w4', name:'现代地球', desc:'与现实相同的当代地球，暗中存在隐藏的超自然势力', tags:['现代','隐藏力量','双层世界','都市'] }},
+          { type: 'protagonist', x: 680, y: 60, selected: { id:'p8', name:'女强人型', desc:'独立坚强的女性主角，在男权世界中用实力说话', tags:['女强','独立','事业','感情'] }, char_name: '苏晚' },
+          { type: 'outline', x: 60, y: 280, selected: { id:'o8', name:'甜蜜爱情线', desc:'两人从相遇到相爱，经历误会、分离、重聚，最终修成正果', tags:['爱情','误会','重聚','甜蜜'] }},
+          { type: 'conflict', x: 370, y: 280, selected: { id:'c7', name:'爱恨情仇', desc:'爱与恨交织，背叛与忠诚共存', tags:['爱恨','背叛','忠诚','情感'] }},
+          { type: 'style', x: 680, y: 280, selected: { id:'s8', name:'甜蜜宠溺', desc:'甜甜的恋爱描写，大量宠溺情节，糖分超标', tags:['甜蜜','宠溺','糖分','恋爱'] }},
+          { type: 'chapter', x: 60, y: 500, selected: { id:'ch2', name:'中篇（20-50章）', desc:'中等体量，每章3000-4000字，有完整的起承转合', tags:['中篇','完整','结构'] }, word_count: 3500, chapter_count: 35 },
+          { type: 'characters', x: 370, y: 500, selected: { id:'cr4', name:'恋人/感情线型', desc:'故事的感情核心，与主角产生深刻情感联结', tags:['恋人','情感','羁绊','柔软'] }, char_name: '陆景深', char_role: '男主', char_desc: '表面冷峻的商业帝国继承人，实则对苏晚一往情深' },
+          { type: 'pov', x: 680, y: 500, selected: { id:'pov4', name:'多视角切换', desc:'按章节切换不同角色视角，让读者看到不同角色眼中的同一世界', tags:['多视角','切换','对比'] }},
+          { type: 'setting_detail', x: 370, y: 720, selected: { id:'sd4', name:'配角关系网', desc:'设计主角身边的重要配角：老师、伙伴、对手、恋人，及各自的弧光', tags:['配角','关系','弧光'] }},
+        ]
+      },
+      scifi: {
+        name: '科幻星际小说',
+        nodes: [
+          { type: 'genre', x: 60, y: 60, selected: { id:'scifi', name:'科幻星际', desc:'星际征途，科技文明', tags:['飞船','AI','星际战争','外星文明'] }},
+          { type: 'world', x: 370, y: 60, selected: { id:'w3', name:'未来星际文明', desc:'公元3000年，人类已经扩张至银河系，存在多个星际帝国和联邦', tags:['科技','星际','帝国','联邦'] }},
+          { type: 'protagonist', x: 680, y: 60, selected: { id:'p5', name:'被动卷入型', desc:'原本普通，因一次意外被卷入更大的漩涡，被迫成长', tags:['普通人','意外','被迫','成长'] }, char_name: '林航' },
+          { type: 'outline', x: 60, y: 280, selected: { id:'o10', name:'全球危机式', desc:'从个人危机扩展到全球威胁，主角被推上拯救世界的舞台', tags:['危机','扩展','拯救','使命'] }},
+          { type: 'conflict', x: 370, y: 280, selected: { id:'c8', name:'文明冲突', desc:'不同种族、文明、信仰之间的根本冲突', tags:['文明','种族','信仰','冲突'] }},
+          { type: 'style', x: 680, y: 280, selected: { id:'s4', name:'热血燃情', desc:'战斗场面描写激烈，充满热血情怀', tags:['热血','燃','激烈','豪情'] }},
+          { type: 'chapter', x: 60, y: 500, selected: { id:'ch2', name:'中篇（20-50章）', desc:'中等体量，每章3000-4000字，有完整的起承转合', tags:['中篇','完整','结构'] }, word_count: 3500, chapter_count: 40 },
+          { type: 'characters', x: 370, y: 500, selected: { id:'cr2', name:'挚友/搭档型', desc:'主角最信任的伙伴，性格互补，生死与共', tags:['挚友','互补','信任','并肩'] }, char_name: '艾拉', char_role: '搭档', char_desc: '来自外星种族的机械师，技术天才，性格爽朗' },
+          { type: 'pov', x: 680, y: 500, selected: { id:'pov2', name:'第三人称有限视角', desc:'「他/她」叙述，但仅限主角视角', tags:['第三人称','有限','平衡'] }},
+          { type: 'setting_detail', x: 370, y: 720, selected: { id:'sd6', name:'独特设定', desc:'建立这个世界独有的规则或设定，与众不同，让读者觉得新鲜', tags:['独特','规则','新鲜'] }},
+        ]
+      },
+      horror: {
+        name: '悬疑推理小说',
+        nodes: [
+          { type: 'genre', x: 60, y: 60, selected: { id:'horror', name:'悬疑惊悚', desc:'烧脑解谜，恐怖氛围', tags:['推理','悬疑','恐怖','诡异'] }},
+          { type: 'world', x: 370, y: 60, selected: { id:'w4', name:'现代地球', desc:'与现实相同的当代地球，暗中存在隐藏的超自然势力', tags:['现代','隐藏力量','双层世界','都市'] }},
+          { type: 'protagonist', x: 680, y: 60, selected: { id:'p9', name:'腹黑谋士型', desc:'智慧超群，布局深远，以谋略解决一切问题', tags:['谋略','腹黑','智慧','秘密'] }, char_name: '沈默' },
+          { type: 'outline', x: 60, y: 280, selected: { id:'o4', name:'悬疑揭秘式', desc:'开头抛出大谜团，中途不断给出线索，结局反转揭秘', tags:['悬疑','谜团','线索','反转'] }},
+          { type: 'conflict', x: 370, y: 280, selected: { id:'c4', name:'身份秘密', desc:'主角隐藏真实身份，一旦暴露将面临巨大危险', tags:['身份','隐藏','暴露','真相'] }},
+          { type: 'style', x: 680, y: 280, selected: { id:'s5', name:'悬疑烧脑', desc:'信息量大，前后伏笔呼应，逻辑严密', tags:['悬疑','伏笔','逻辑','烧脑'] }},
+          { type: 'chapter', x: 60, y: 500, selected: { id:'ch1', name:'短篇（5-10章）', desc:'精炼故事，每章2000-3000字，结构紧凑', tags:['短篇','精炼','紧凑'] }, word_count: 2500, chapter_count: 8 },
+          { type: 'characters', x: 370, y: 500, selected: { id:'cr3', name:'宿敌/反派型', desc:'与主角势均力敌的对手，有自己的信念和动机', tags:['宿敌','信念','推动','势均'] }, char_name: '白夜', char_role: '宿敌', char_desc: '与沈默同出师门，走上了截然相反的道路' },
+          { type: 'pov', x: 680, y: 500, selected: { id:'pov1', name:'第一人称主角视角', desc:'以主角的「我」叙述，代入感最强', tags:['第一人称','代入','内心'] }},
+          { type: 'setting_detail', x: 370, y: 720, selected: { id:'sd5', name:'核心伏笔', desc:'提前设置将在中后期揭示的重要伏笔，让故事有深度', tags:['伏笔','悬念','揭示'] }},
+        ]
+      },
+      apocalypse: {
+        name: '末世求生小说',
+        nodes: [
+          { type: 'genre', x: 60, y: 60, selected: { id:'apocalypse', name:'末世求生', desc:'文明崩塌后的生存法则', tags:['丧尸','变异','求生','基地'] }},
+          { type: 'world', x: 370, y: 60, selected: { id:'w5', name:'末世荒土', desc:'文明崩塌后第五年，城市成为废墟，变异生物横行，幸存者建立据点', tags:['末世','废土','幸存','变异'] }},
+          { type: 'protagonist', x: 680, y: 60, selected: { id:'p6', name:'黑化大佬型', desc:'表面普通，实则深藏不露，关键时刻展现真正实力', tags:['隐藏实力','黑化','大佬','反差'] }, char_name: '秦烈' },
+          { type: 'outline', x: 60, y: 280, selected: { id:'o9', name:'末世求存式', desc:'灾难降临，主角带领团队求生，建立根据地，逐渐反攻，重建文明', tags:['末世','团队','求生','重建'] }},
+          { type: 'conflict', x: 370, y: 280, selected: { id:'c1', name:'强弱对立', desc:'主角以弱胜强，不断突破自身极限', tags:['以弱胜强','突破','极限','强敌'] }},
+          { type: 'style', x: 680, y: 280, selected: { id:'s7', name:'黑暗沉重', desc:'世界观黑暗，人性阴暗面展露，充满宿命感', tags:['黑暗','苦难','宿命','沉重'] }},
+          { type: 'chapter', x: 60, y: 500, selected: { id:'ch2', name:'中篇（20-50章）', desc:'中等体量，每章3000-4000字，有完整的起承转合', tags:['中篇','完整','结构'] }, word_count: 3000, chapter_count: 30 },
+          { type: 'characters', x: 370, y: 500, selected: { id:'cr7', name:'团队伙伴型', desc:'与主角同行的团队成员，各有所长，共同成长', tags:['团队','成长','合作','多元'] }, char_name: '周瑶', char_role: '队友', char_desc: '前军医，冷静理性，团队的医疗保障和理性决策者' },
+          { type: 'pov', x: 680, y: 500, selected: { id:'pov2', name:'第三人称有限视角', desc:'「他/她」叙述，但仅限主角视角', tags:['第三人称','有限','平衡'] }},
+          { type: 'setting_detail', x: 370, y: 720, selected: { id:'sd2', name:'势力格局', desc:'划定世界中的主要势力，势力间有明确的关系', tags:['势力','格局','关系'] }},
+        ]
+      }
+    };
+
+    const tmpl = templates[type];
+    if (!tmpl) return;
+
+    document.getElementById('project-name-input').value = tmpl.name;
+    
+    let prevId = null;
+    const ids = [];
+    tmpl.nodes.forEach((n, i) => {
+      const id = App.addNode(n.type, n.x, n.y);
+      STATE.nodes[id].selected = n.selected;
+      // 自定义字段：角色名/字数/章节数等
+      if (n.char_name) STATE.nodes[id].char_name = n.char_name;
+      if (n.char_role) STATE.nodes[id].char_role = n.char_role;
+      if (n.char_desc) STATE.nodes[id].char_desc = n.char_desc;
+      if (n.word_count) STATE.nodes[id].word_count = n.word_count;
+      if (n.chapter_count) STATE.nodes[id].chapter_count = n.chapter_count;
+      ids.push(id);
+      renderNodeContent(id);
+    });
+    
+    // 自动连线
+    for (let i = 0; i < ids.length - 1; i++) {
+      STATE.edges.push({ from: ids[i], to: ids[i+1] });
+    }
+    renderConnections();
+    updateFlowIndicator();
+    toast(`⚡ 已加载「${tmpl.name}」模板`);
+  },
+
+  async saveAsTemplate() {
+    const nodeList = Object.values(STATE.nodes);
+    if (nodeList.length === 0) { toast('⚠️ 画布为空，请先添加节点'); return; }
+    const name = prompt('请输入模板名称：', document.getElementById('project-name-input').value || '我的模板');
+    if (!name || !name.trim()) return;
+
+    const r = await fetch('/api/custom-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name.trim(),
+        nodes: nodeList.map(n => ({
+          type: n.type, x: n.x, y: n.y, selected: n.selected,
+          char_name: n.char_name, char_role: n.char_role, char_desc: n.char_desc,
+          word_count: n.word_count, chapter_count: n.chapter_count
+        })),
+        edges: STATE.edges
+      })
+    });
+    if (r.ok) {
+      toast(`📌 模板「${name.trim()}」已保存`);
+      await loadCustomTemplates();
+    } else {
+      toast('❌ 保存失败');
+    }
+  },
+
+  async loadCustomTemplate(id) {
+    const r = await fetch('/api/custom-templates');
+    const templates = await r.json();
+    const tmpl = templates.find(t => t.id === id);
+    if (!tmpl) { toast('模板不存在'); return; }
+    if (Object.keys(STATE.nodes).length > 0) {
+      if (!confirm(`加载模板「${tmpl.name}」会清空当前画布，确定继续？`)) return;
+    }
+    App.clearCanvas();
+    document.getElementById('project-name-input').value = tmpl.name;
+    let prevId = null;
+    const ids = [];
+    (tmpl.nodes || []).forEach(n => {
+      const nid = App.addNode(n.type, n.x, n.y);
+      STATE.nodes[nid].selected = n.selected;
+      if (n.char_name) STATE.nodes[nid].char_name = n.char_name;
+      if (n.char_role) STATE.nodes[nid].char_role = n.char_role;
+      if (n.char_desc) STATE.nodes[nid].char_desc = n.char_desc;
+      if (n.word_count) STATE.nodes[nid].word_count = n.word_count;
+      if (n.chapter_count) STATE.nodes[nid].chapter_count = n.chapter_count;
+      ids.push(nid);
+      renderNodeContent(nid);
+    });
+    for (let i = 0; i < ids.length - 1; i++) {
+      STATE.edges.push({ from: ids[i], to: ids[i+1] });
+    }
+    renderConnections();
+    updateFlowIndicator();
+    toast(`📌 已加载「${tmpl.name}」`);
+  },
+
+  async deleteCustomTemplate(id, name) {
+    if (!confirm(`确定删除模板「${name}」？此操作不可恢复。`)) return;
+    const r = await fetch(`/api/custom-templates/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      toast(`🗑️ 已删除「${name}」`);
+      await loadCustomTemplates();
+    } else {
+      toast('❌ 删除失败');
+    }
+  }
+};
+
+// 加载自定义模板列表
+async function loadCustomTemplates() {
+  const r = await fetch('/api/custom-templates');
+  const templates = await r.json();
+  const section = document.getElementById('custom-templates-section');
+  const list = document.getElementById('custom-templates-list');
+  if (templates.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  list.innerHTML = templates.map(t => `
+    <div class="ct-item" onclick="App.loadCustomTemplate('${t.id}')">
+      <span style="font-size:14px">📌</span>
+      <span class="ct-name" title="${t.name}">${t.name}</span>
+      <button class="ct-del" onclick="event.stopPropagation(); App.deleteCustomTemplate('${t.id}', '${t.name.replace(/'/g, "\\'")}')" title="删除模板">✕</button>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+//  节点渲染
+// ============================================================
+function renderNode(nodeData, def) {
+  const el = document.createElement('div');
+  el.id = nodeData.id;
+  el.className = 'node';
+  el.style.left = nodeData.x + 'px';
+  el.style.top = nodeData.y + 'px';
+  
+  const headerStyle = `background: linear-gradient(135deg, ${def.color}33, ${def.color}15);`;
+  
+  el.innerHTML = `
+    <div class="node-header" style="${headerStyle}; border-bottom: 1px solid ${def.color}40">
+      <span class="node-icon">${def.icon}</span>
+      <span class="node-title">${def.name}</span>
+      <button class="btn-delete" onclick="App.removeNode('${nodeData.id}')">×</button>
+    </div>
+    <div class="node-port port-in" data-node="${nodeData.id}" data-port="in"></div>
+    <div class="node-port port-out" data-node="${nodeData.id}" data-port="out"
+         onmousedown="startConnect(event, '${nodeData.id}')"></div>
+    <div class="node-body" id="nb_${nodeData.id}">
+      <div class="node-placeholder">点击「选择」配置此节点</div>
+    </div>
+    <div style="padding: 0 14px 12px; display:flex; gap:6px;">
+      ${nodeData.type !== 'custom' ? `
+      <button class="btn btn-secondary" style="flex:1;font-size:11px;padding:4px 8px" 
+              onclick="openPanel('${nodeData.id}', '${nodeData.type}')">📋 选择预设</button>
+      ` : ''}
+      <button class="btn btn-secondary" style="flex:1;font-size:11px;padding:4px 8px"
+              onclick="openCustomInput('${nodeData.id}')">✏️ 自定义</button>
+    </div>
+  `;
+  
+  // 拖拽绑定
+  attachNodeDrag(el, nodeData.id);
+  
+  document.getElementById('canvas').appendChild(el);
+  renderNodeContent(nodeData.id);
+  updateEmpty();
+}
+
+function renderNodeContent(id) {
+  const node = STATE.nodes[id];
+  if (!node) return;
+  const body = document.getElementById(`nb_${id}`);
+  if (!body) return;
+  
+  if (node.type === 'custom') {
+    body.innerHTML = `
+      <textarea class="node-textarea" placeholder="在此输入自定义设定内容..." 
+                onchange="STATE.nodes['${id}'].custom_text=this.value"
+      >${node.custom_text || ''}</textarea>
+    `;
+    return;
+  }
+  
+  let innerHTML = '';
+  
+  // 已选预设的展示
+  if (node.selected) {
+    const s = node.selected;
+    const tagsHtml = (s.tags || []).map(t => `<span class="si-tag ${s.ai_generated ? 'ai' : ''}">${t}</span>`).join('');
+    innerHTML = `
+      <div class="selected-item">
+        <div class="si-name">${s.ai_generated ? '✨ ' : ''}${s.name}</div>
+        <div class="si-desc">${s.desc || ''}</div>
+        ${tagsHtml ? `<div class="si-tags">${tagsHtml}</div>` : ''}
+        <button class="btn-clear" onclick="clearNodeSelection('${id}')">×</button>
+      </div>
+    `;
+  } else if (node.custom_text) {
+    innerHTML = `
+      <div class="selected-item">
+        <div class="si-desc">${node.custom_text}</div>
+        <button class="btn-clear" onclick="clearNodeCustom('${id}')">×</button>
+      </div>
+    `;
+  } else {
+    innerHTML = `<div class="node-placeholder">点击「选择」配置此节点</div>`;
+  }
+
+  // 针对特定节点类型，追加自定义输入字段
+  if (node.type === 'chapter') {
+    innerHTML += `
+      <div class="node-field-row">
+        <div class="node-field">
+          <label>📝 每章字数</label>
+          <input type="number" value="${node.word_count || ''}" placeholder="如 3000"
+            onchange="STATE.nodes['${id}'].word_count=parseInt(this.value)||0; updateFlowIndicator()">
+        </div>
+        <div class="node-field">
+          <label>📖 总章节数</label>
+          <input type="number" value="${node.chapter_count || ''}" placeholder="如 30"
+            onchange="STATE.nodes['${id}'].chapter_count=parseInt(this.value)||0; updateFlowIndicator()">
+        </div>
+      </div>
+    `;
+  }
+
+  if (node.type === 'protagonist') {
+    innerHTML += `
+      <div class="node-field">
+        <label>🪪 主角姓名</label>
+        <input type="text" value="${node.char_name || ''}" placeholder="输入主角姓名..."
+          onchange="STATE.nodes['${id}'].char_name=this.value; updateFlowIndicator()">
+      </div>
+    `;
+  }
+
+  if (node.type === 'characters') {
+    innerHTML += `
+      <div class="node-field">
+        <label>🪪 角色姓名</label>
+        <input type="text" value="${node.char_name || ''}" placeholder="输入角色姓名..."
+          onchange="STATE.nodes['${id}'].char_name=this.value; updateFlowIndicator()">
+      </div>
+      <div class="node-field">
+        <label>🎯 角色身份</label>
+        <input type="text" value="${node.char_role || ''}" placeholder="如：女主的闺蜜、反派大boss..."
+          onchange="STATE.nodes['${id}'].char_role=this.value; updateFlowIndicator()">
+      </div>
+      <div class="node-field">
+        <label>📝 角色简述</label>
+        <textarea placeholder="简要描述角色性格、背景、动机..."
+          onchange="STATE.nodes['${id}'].char_desc=this.value">${node.char_desc || ''}</textarea>
+      </div>
+    `;
+  }
+
+  body.innerHTML = innerHTML;
+  
+  // 更新节点样式状态
+  const hasContent = !!(node.selected || node.custom_text || node.char_name || node.word_count || 
+    (node.selected && node.type === 'characters'));
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('done', hasContent);
+}
+
+function clearNodeSelection(id) {
+  STATE.nodes[id].selected = null;
+  renderNodeContent(id);
+  updateFlowIndicator();
+}
+
+function clearNodeCustom(id) {
+  STATE.nodes[id].custom_text = '';
+  renderNodeContent(id);
+  updateFlowIndicator();
+}
+
+function openCustomInput(id) {
+  const node = STATE.nodes[id];
+  if (!node) return;
+  const val = prompt('请输入自定义设定内容：', node.custom_text || '');
+  if (val !== null) {
+    node.custom_text = val;
+    renderNodeContent(id);
+    updateFlowIndicator();
+  }
+}
+
+// ============================================================
+//  画布拖拽 & 缩放
+// ============================================================
+let isDraggingCanvas = false;
+let panStartX, panStartY, panOffsetX0, panOffsetY0;
+
+let dragNodeId = null;
+let dragStartX, dragStartY, dragNodeX0, dragNodeY0;
+
+function dragLog(msg) {
+  // 在控制台和页面底部同时输出调试信息
+  console.log('[DRAG]', msg);
+}
+
+function setupCanvasEvents() {
+  const area = document.getElementById('canvas-area');
+  
+  // ========== 画布空白处拖拽平移 ==========
+  area.addEventListener('mousedown', (e) => {
+    if (e.target === area || e.target.id === 'canvas' || e.target.id === 'connections-svg') {
+      isDraggingCanvas = true;
+      panStartX = e.clientX;
+      panStartY = e.clientY;
+      panOffsetX0 = STATE.offsetX;
+      panOffsetY0 = STATE.offsetY;
+      area.style.cursor = 'grabbing';
+      dragLog('canvas pan start');
+    }
+  });
+  
+  // ========== 全局 mousemove（同时处理画布平移、节点拖拽、连线） ==========
+  document.addEventListener('mousemove', (e) => {
+    // 画布平移
+    if (isDraggingCanvas) {
+      STATE.offsetX = panOffsetX0 + (e.clientX - panStartX) / STATE.scale;
+      STATE.offsetY = panOffsetY0 + (e.clientY - panStartY) / STATE.scale;
+      updateCanvasTransform();
+    }
+    
+    // 节点拖拽 — 基于起始位置计算总偏移（更可靠）
+    if (dragNodeId) {
+      const dx = (e.clientX - dragStartX) / STATE.scale;
+      const dy = (e.clientY - dragStartY) / STATE.scale;
+      const node = STATE.nodes[dragNodeId];
+      if (node) {
+        node.x = dragNodeX0 + dx;
+        node.y = dragNodeY0 + dy;
+        const el = document.getElementById(dragNodeId);
+        if (el) {
+          el.style.left = node.x + 'px';
+          el.style.top = node.y + 'px';
+          el.classList.add('dragging');
+        }
+        renderConnections();
+      }
+    }
+    
+    // 连线拖拽
+    if (STATE.connectingLine) {
+      updateTempLine(e);
+    }
+  });
+  
+  // ========== 全局 mouseup ==========
+  document.addEventListener('mouseup', (e) => {
+    if (isDraggingCanvas) {
+      isDraggingCanvas = false;
+      area.style.cursor = '';
+      dragLog('canvas pan end');
+    }
+    if (dragNodeId) {
+      const el = document.getElementById(dragNodeId);
+      if (el) el.classList.remove('dragging');
+      dragLog('node drag end: ' + dragNodeId.slice(-6) + ' → (' + Math.round(STATE.nodes[dragNodeId]?.x || 0) + ', ' + Math.round(STATE.nodes[dragNodeId]?.y || 0) + ')');
+      dragNodeId = null;
+    }
+    if (STATE.connectingLine) {
+      finishConnect(e);
+    }
+  });
+  
+  // ========== 缩放 ==========
+  area.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    STATE.scale = Math.max(0.3, Math.min(2.5, STATE.scale * delta));
+    updateCanvasTransform();
+  }, { passive: false });
+  
+  // ========== 左侧面板拖放节点到画布（HTML5 native drag/drop） ==========
+  area.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  
+  area.addEventListener('drop', (e) => {
+    e.preventDefault();
+    // 尝试多种格式获取数据
+    let type = e.dataTransfer.getData('node-type');
+    if (!type) type = e.dataTransfer.getData('text/plain');
+    if (!type) { dragLog('drop: no type found in dataTransfer'); return; }
+    
+    const rect = area.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / STATE.scale - STATE.offsetX;
+    const y = (e.clientY - rect.top) / STATE.scale - STATE.offsetY;
+    dragLog('drop: ' + type + ' at canvas(' + Math.round(x) + ', ' + Math.round(y) + ')');
+    App.addNode(type, x - 100, y - 30);
+  });
+  
+  dragLog('setupCanvasEvents done');
+}
+
+function updateCanvasTransform() {
+  const canvas = document.getElementById('canvas');
+  canvas.style.transform = `scale(${STATE.scale}) translate(${STATE.offsetX}px, ${STATE.offsetY}px)`;
+}
+
+// ========== 节点拖拽启动（在 renderNode 中调用） ==========
+function attachNodeDrag(el, id) {
+  el.addEventListener('mousedown', (e) => {
+    // 过滤掉交互元素上的点击
+    if (e.target.closest('.btn-delete') || e.target.closest('.node-port')) return;
+    const tag = e.target.tagName;
+    if (tag === 'BUTTON' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'INPUT') return;
+    
+    // 阻止默认行为（防止文本选择等干扰拖拽）
+    e.preventDefault();
+    
+    const node = STATE.nodes[id];
+    if (!node) return;
+    
+    dragNodeId = id;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragNodeX0 = node.x;
+    dragNodeY0 = node.y;
+    dragLog('node drag start: ' + id.slice(-6) + ' from (' + Math.round(node.x) + ', ' + Math.round(node.y) + ')');
+  });
+}
+
+// ========== 侧边栏拖拽 ==========
+function onPaletteDragStart(e, type) {
+  e.dataTransfer.setData('node-type', type);
+  e.dataTransfer.setData('text/plain', type);  // 兜底
+  e.dataTransfer.effectAllowed = 'copy';
+  dragLog('palette dragstart: ' + type);
+}
+
+// ============================================================
+//  连线系统
+// ============================================================
+function startConnect(e, fromId) {
+  e.stopPropagation();
+  e.preventDefault();
+  STATE.connectingLine = { fromId };
+  
+  const svg = document.getElementById('connections-svg');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.id = 'temp-line';
+  path.setAttribute('class', 'connection-line');
+  path.style.strokeDasharray = '5,5';
+  svg.appendChild(path);
+  updateTempLine(e);
+}
+
+function updateTempLine(e) {
+  const path = document.getElementById('temp-line');
+  if (!path || !STATE.connectingLine) return;
+  
+  const fromNode = STATE.nodes[STATE.connectingLine.fromId];
+  if (!fromNode) return;
+  
+  const el = document.getElementById(STATE.connectingLine.fromId);
+  const sx = fromNode.x * STATE.scale + el.offsetWidth * STATE.scale + STATE.offsetX * STATE.scale;
+  const sy = (fromNode.y + el.offsetHeight / 2) * STATE.scale + STATE.offsetY * STATE.scale;
+  
+  const area = document.getElementById('canvas-area');
+  const rect = area.getBoundingClientRect();
+  const ex = e.clientX - rect.left;
+  const ey = e.clientY - rect.top;
+  
+  const dx = Math.abs(ex - sx) * 0.5;
+  path.setAttribute('d', `M ${sx} ${sy} C ${sx + dx} ${sy}, ${ex - dx} ${ey}, ${ex} ${ey}`);
+}
+
+function finishConnect(e) {
+  document.getElementById('temp-line')?.remove();
+  
+  if (!STATE.connectingLine) return;
+  
+  // 找目标端口
+  const portEl = e.target.closest('.port-in');
+  if (portEl) {
+    const toId = portEl.dataset.node;
+    if (toId && toId !== STATE.connectingLine.fromId) {
+      // 避免重复连线
+      const exists = STATE.edges.find(ed => ed.from === STATE.connectingLine.fromId && ed.to === toId);
+      if (!exists) {
+        STATE.edges.push({ from: STATE.connectingLine.fromId, to: toId });
+        renderConnections();
+        toast('🔗 节点已连接');
+      }
+    }
+  }
+  
+  STATE.connectingLine = null;
+}
+
+function renderConnections() {
+  const svg = document.getElementById('connections-svg');
+  // 清除旧连线（保留临时线）
+  Array.from(svg.querySelectorAll('.connection-line:not(#temp-line)')).forEach(el => el.remove());
+  
+  STATE.edges.forEach(edge => {
+    const fromNode = STATE.nodes[edge.from];
+    const toNode = STATE.nodes[edge.to];
+    if (!fromNode || !toNode) return;
+    
+    const fromEl = document.getElementById(edge.from);
+    const toEl = document.getElementById(edge.to);
+    if (!fromEl || !toEl) return;
+    
+    const sx = (fromNode.x + fromEl.offsetWidth) * STATE.scale + STATE.offsetX * STATE.scale;
+    const sy = (fromNode.y + fromEl.offsetHeight / 2) * STATE.scale + STATE.offsetY * STATE.scale;
+    const ex = toNode.x * STATE.scale + STATE.offsetX * STATE.scale;
+    const ey = (toNode.y + toEl.offsetHeight / 2) * STATE.scale + STATE.offsetY * STATE.scale;
+    
+    const dx = Math.abs(ex - sx) * 0.5;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('class', 'connection-line');
+    path.setAttribute('d', `M ${sx} ${sy} C ${sx+dx} ${sy}, ${ex-dx} ${ey}, ${ex} ${ey}`);
+    
+    // 双击删除
+    path.style.pointerEvents = 'stroke';
+    path.style.cursor = 'pointer';
+    path.addEventListener('dblclick', () => {
+      STATE.edges = STATE.edges.filter(e => e !== edge);
+      renderConnections();
+    });
+    
+    svg.appendChild(path);
+  });
+}
+
+// ============================================================
+//  面板（预设选择器）
+// ============================================================
+const Panel = {
+  tempSelected: null,
+  aiOptions: [],
+
+  async open(nodeId, category) {
+    STATE.panelNodeId = nodeId;
+    STATE.panelCategory = category;
+    Panel.tempSelected = STATE.nodes[nodeId]?.selected || null;
+    Panel.aiOptions = [];
+
+    const panel = document.getElementById('panel');
+    panel.classList.remove('hidden');
+
+    // 若预设尚未加载，先重新拉取
+    if (!STATE.presets || Object.keys(STATE.presets).length === 0) {
+      document.getElementById('panel-content').innerHTML =
+        '<div style="padding:24px;text-align:center;color:var(--text2)">⏳ 正在连接服务器加载预设...</div>';
+      await loadPresets();
+      // 重试后仍为空
+      if (!STATE.presets || Object.keys(STATE.presets).length === 0) {
+        const errDetail = STATE._presetsError || '未知错误';
+        document.getElementById('ph-icon').textContent = '⚠️';
+        document.getElementById('ph-title').textContent = '加载失败';
+        document.getElementById('panel-content').innerHTML =
+          '<div style="padding:24px;text-align:center;color:var(--text3)">' +
+          '⚠️ 无法连接服务器<br><br>' +
+          '<small>错误：<code>' + errDetail + '</code></small><br>' +
+          '<small>请确认服务器 <b>http://127.0.0.1:8505</b> 正在运行</small><br><br>' +
+          '<button class="btn btn-primary" onclick="loadPresets().then(()=>Panel.open(STATE.panelNodeId,STATE.panelCategory))" style="font-size:12px">🔄 重试</button>' +
+          '</div>';
+        return;
+      }
+    }
+
+    const data = STATE.presets[category];
+    document.getElementById('ph-icon').textContent = data?.icon || '📋';
+    document.getElementById('ph-title').textContent = data?.name || '选择预设';
+    
+    Panel.render();
+  },
+
+  render() {
+    const content = document.getElementById('panel-content');
+    const data = STATE.presets[STATE.panelCategory];
+    const allOptions = [...(data?.presets || []), ...Panel.aiOptions];
+    
+    if (!data) {
+      content.innerHTML =
+        '<div style="padding:24px;text-align:center;color:var(--text3)">' +
+        '⚠️ 预设数据未就绪<br><br>' +
+        '<small>请确认服务器运行正常</small><br><br>' +
+        '<button class="btn btn-primary" onclick="loadPresets().then(()=>Panel.open(STATE.panelNodeId,STATE.panelCategory))" style="font-size:12px">🔄 重新加载</button>' +
+        '</div>';
+      return;
+    }
+    if (allOptions.length === 0) {
+      content.innerHTML = '<div style="padding:20px;color:var(--text3);text-align:center">暂无预设，点击下方「AI生成」</div>';
+      return;
+    }
+    
+    content.innerHTML = `
+      <div class="preset-grid">
+        ${allOptions.map(opt => `
+          <div class="preset-card ${opt.ai_generated ? 'ai-card' : ''} ${Panel.tempSelected?.id === opt.id ? 'selected' : ''}"
+               onclick="Panel.select(${JSON.stringify(opt).replace(/"/g, '&quot;')})">
+            <div class="pc-name">
+              ${opt.name}
+              ${opt.ai_generated ? '<span class="pc-ai-badge">✨ AI生成</span>' : ''}
+            </div>
+            <div class="pc-desc">${opt.desc || ''}</div>
+            ${opt.tags ? `<div class="pc-tags">${opt.tags.map(t => `<span class="pc-tag ${opt.ai_generated ? 'ai' : ''}">${t}</span>`).join('')}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  },
+
+  select(opt) {
+    Panel.tempSelected = opt;
+    Panel.render();
+  },
+
+  confirmSelection() {
+    if (!Panel.tempSelected) { toast('请先选择一个预设'); return; }
+    STATE.nodes[STATE.panelNodeId].selected = Panel.tempSelected;
+    renderNodeContent(STATE.panelNodeId);
+    updateFlowIndicator();
+    closePanel();
+    toast(`✅ 已选择：${Panel.tempSelected.name}`);
+  },
+
+  async generateAI() {
+    const btn = document.getElementById('btn-ai-gen');
+    const content = document.getElementById('panel-content');
+    
+    if (!STATE.modelType) { toast('⚠️ 请先配置AI模型'); showModelModal(); return; }
+    
+    btn.disabled = true;
+    btn.textContent = '生成中...';
+    
+    // 收集上下文
+    const context = buildFlowConfig();
+    
+    try {
+      const r = await fetch('/api/ai/generate-options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          node_type: STATE.panelCategory,
+          context,
+          model_config: { type: STATE.modelType, ...STATE.modelConfig },
+          count: 4
+        })
+      });
+      const data = await r.json();
+      if (data.ok) {
+        Panel.aiOptions = [...Panel.aiOptions, ...data.options];
+        Panel.render();
+        toast(`✨ AI生成了 ${data.options.length} 个新选项`);
+      } else {
+        toast('❌ AI生成失败: ' + data.error);
+      }
+    } catch(e) {
+      toast('❌ 请求失败: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✨ AI 生成更多选项';
+    }
+  }
+};
+
+function openPanel(nodeId, category) {
+  Panel.open(nodeId, category);  // Panel.open is async, fire and forget is fine
+}
+
+function closePanel() {
+  document.getElementById('panel').classList.add('hidden');
+}
+
+// ============================================================
+//  流程指示器
+// ============================================================
+function updateFlowIndicator() {
+  const nodeList = Object.values(STATE.nodes);
+  const indicator = document.getElementById('flow-indicator');
+  
+  if (nodeList.length === 0) { indicator.classList.remove('show'); return; }
+  indicator.classList.add('show');
+  
+  const steps = nodeList.slice(0, 6); // 最多显示6步
+  indicator.innerHTML = steps.map((n, i) => {
+    const def = NODE_TYPES.find(t => t.type === n.type);
+    const isDone = !!(n.selected || n.custom_text);
+    return `
+      ${i > 0 ? '<span class="fi-arrow">›</span>' : ''}
+      <div class="fi-step ${isDone ? 'done' : ''}">
+        <div class="fi-dot"></div>
+        <span>${def?.icon || '📝'} ${def?.name || n.type}</span>
+      </div>
+    `;
+  }).join('') + (nodeList.length > 6 ? '<span class="fi-arrow">...</span>' : '');
+}
+
+function updateEmpty() {
+  const empty = document.getElementById('empty-state');
+  const nodeCount = Object.keys(STATE.nodes).length;
+  empty.style.display = nodeCount > 0 ? 'none' : 'block';
+}
+
+// ============================================================
+//  执行面板
+// ============================================================
+function buildFlowConfig() {
+  const config = {};
+  Object.values(STATE.nodes).forEach(n => {
+    // core preset/custom_text
+    if (n.selected) {
+      config[n.type] = config[n.type] || {};
+      config[n.type].selected = n.selected;
+    } else if (n.custom_text) {
+      config[n.type] = config[n.type] || {};
+      config[n.type].selected = { name: '自定义', desc: n.custom_text, tags: [] };
+    }
+    // extra fields
+    if (n.char_name) { config[n.type] = config[n.type] || {}; config[n.type].char_name = n.char_name; }
+    if (n.char_role) { config[n.type] = config[n.type] || {}; config[n.type].char_role = n.char_role; }
+    if (n.char_desc) { config[n.type] = config[n.type] || {}; config[n.type].char_desc = n.char_desc; }
+    if (n.word_count)  { config[n.type] = config[n.type] || {}; config[n.type].word_count = n.word_count; }
+    if (n.chapter_count) { config[n.type] = config[n.type] || {}; config[n.type].chapter_count = n.chapter_count; }
+  });
+  return config;
+}
+
+function openExecutePanel() {
+  document.getElementById('execute-panel').classList.add('show');
+}
+
+function closeExecutePanel() {
+  document.getElementById('execute-panel').classList.remove('show');
+}
+
+async function startWriting() {
+  if (!STATE.modelType) {
+    toast('⚠️ 请先配置AI模型');
+    showModelModal();
+    return;
+  }
+  
+  const flowConfig = buildFlowConfig();
+  const configKeys = Object.keys(flowConfig);
+  
+  if (configKeys.length === 0) {
+    toast('⚠️ 请先配置至少一个节点');
+    return;
+  }
+  
+  // 重置输出区
+  document.getElementById('ep-output').innerHTML = '<div class="ai-loading"><div class="spinner"></div> AI正在构思你的故事，请稍候...</div>';
+  document.getElementById('ep-progress-bar').style.width = '0%';
+  document.getElementById('ep-status-text').textContent = '正在生成...';
+  document.getElementById('ep-dot').style.background = 'var(--orange)';
+  document.getElementById('btn-continue').style.display = 'none';
+  
+  try {
+    const r = await fetch('/api/ai/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        flow: flowConfig,
+        model_config: { type: STATE.modelType, ...STATE.modelConfig },
+        writing_style: document.getElementById('writing-style-select').value
+      })
+    });
+    
+    // 次数限制检查
+    if (r.status === 403) {
+      const data = await r.json();
+      const message = `<div style="text-align:center;padding:40px;color:var(--text2)">
+          <div style="font-size:48px;margin-bottom:12px">🔒</div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:8px">${data.error || '生成次数已用完'}</div>
+          <div style="font-size:13px;margin-bottom:16px">免费版每日限${data.max_daily || 3}次生成</div>
+          <button class="btn btn-primary" onclick="showLicenseModal()">升级标准版 — 无限生成</button>
+        </div>`;
+      document.getElementById('ep-output').innerHTML = message;
+      document.getElementById('ep-status-text').textContent = '次数已用完';
+      return;
+    }
+    
+    const data = await r.json();
+    STATE.currentTaskId = data.task_id;
+    pollWritingTask(data.task_id);
+  } catch(e) {
+    document.getElementById('ep-output').innerHTML = `<div style="color:var(--red);padding:20px">❌ 启动失败: ${e.message}</div>`;
+  }
+}
+
+function pollWritingTask(taskId) {
+  const interval = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/ai/write/${taskId}`);
+      const data = await r.json();
+      
+      document.getElementById('ep-progress-bar').style.width = data.progress + '%';
+      
+      if (data.status === 'done') {
+        clearInterval(interval);
+        STATE.lastOutput = data.output;
+        displayOutput(data.output);
+        
+        document.getElementById('ep-status-text').textContent = '✅ 生成完成';
+        document.getElementById('ep-dot').style.background = 'var(--green)';
+        document.getElementById('btn-continue').style.display = 'flex';
+      } else if (data.status === 'error') {
+        clearInterval(interval);
+        document.getElementById('ep-output').innerHTML = `<div style="color:var(--red);padding:20px">❌ 生成失败: ${data.error}</div>`;
+        document.getElementById('ep-status-text').textContent = '❌ 生成失败';
+        document.getElementById('ep-dot').style.background = 'var(--red)';
+      }
+    } catch(e) {
+      clearInterval(interval);
+    }
+  }, 1000);
+}
+
+function displayOutput(text) {
+  // 简单的 markdown 渲染
+  const html = text
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^## (.+)$/gm, '<h2>$2</h2>')
+    .replace(/^### (.+)$/gm, '<div class="chapter-title">$1</div>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n\n/g, '</p><p style="margin:8px 0">')
+    .replace(/\n/g, '<br>');
+  
+  document.getElementById('ep-output').innerHTML = `<p style="margin:8px 0">${html}</p>`;
+  
+  // 重复检测
+  setTimeout(() => checkRepetition(text), 200);
+}
+
+// ============================================================
+//  重复内容检测
+// ============================================================
+function checkRepetition(text) {
+  const warnEl = document.getElementById('repetition-warning');
+  
+  // 拆段落
+  const paragraphs = text.split(/\n\n+/).filter(p => p.trim().length > 30);
+  if (paragraphs.length < 3) { if (warnEl) warnEl.style.display = 'none'; return; }
+  
+  // 检测：连续3段以上高度相似的段落
+  let repeatCount = 0;
+  let maxRepeat = 0;
+  const SIM_THRESHOLD = 0.6; // 相似度阈值
+  
+  for (let i = 1; i < paragraphs.length; i++) {
+    const sim = paragraphSimilarity(paragraphs[i-1], paragraphs[i]);
+    if (sim > SIM_THRESHOLD) {
+      repeatCount++;
+      maxRepeat = Math.max(maxRepeat, repeatCount);
+    } else {
+      repeatCount = 0;
+    }
+  }
+  
+  // 额外检测：相同短语重复（如"他看了看"连续出现）
+  const phraseRepeat = detectPhraseRepeat(text);
+  
+  if (maxRepeat >= 2 || phraseRepeat) {
+    showRepetitionWarning(maxRepeat, phraseRepeat);
+  } else if (warnEl) {
+    warnEl.style.display = 'none';
+  }
+}
+
+function paragraphSimilarity(a, b) {
+  // 简单版 Jaccard：取短段落的关键词相似度
+  const getTokens = s => {
+    // 提取2-3字的连续片段作为特征
+    const tokens = new Set();
+    const cleaned = s.replace(/[，。！？、；：""''「」\s]/g, '');
+    for (let i = 0; i < cleaned.length - 2; i++) {
+      tokens.add(cleaned.substring(i, i + 3));
+    }
+    return tokens;
+  };
+  const ta = getTokens(a);
+  const tb = getTokens(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let intersection = 0;
+  for (const t of ta) { if (tb.has(t)) intersection++; }
+  return intersection / Math.min(ta.size, tb.size);
+}
+
+function detectPhraseRepeat(text) {
+  // 检测同一句话（15字以上）在文中出现超过2次
+  const sentences = text.split(/[。！？!?\n]/).filter(s => s.trim().length > 15);
+  const seen = new Map();
+  for (const s of sentences) {
+    const key = s.trim().substring(0, 30);
+    seen.set(key, (seen.get(key) || 0) + 1);
+  }
+  for (const [key, count] of seen) {
+    if (count >= 2) return key;
+  }
+  return null;
+}
+
+function showRepetitionWarning(segmentRepeats, phraseRepeat) {
+  let warnEl = document.getElementById('repetition-warning');
+  if (!warnEl) {
+    warnEl = document.createElement('div');
+    warnEl.id = 'repetition-warning';
+    warnEl.style.cssText = 'margin:8px 12px;padding:10px 14px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:8px;font-size:12px;color:var(--orange);display:flex;align-items:center;gap:8px';
+    document.getElementById('ep-output').prepend(warnEl);
+  }
+  
+  let msg = '⚠️ 检测到内容重复迹象：';
+  if (segmentRepeats >= 2) msg += ` 连续${segmentRepeats+1}段高度相似`;
+  if (phraseRepeat) msg += ` | 相同短语重复：「${phraseRepeat}...」`;
+  msg += '。建议调整 repeat_penalty 和 frequency_penalty 参数后重新生成。';
+  
+  warnEl.textContent = msg;
+  warnEl.style.display = 'flex';
+}
+
+async function continueWriting() {
+  if (!STATE.lastOutput) return;
+  
+  document.getElementById('ep-status-text').textContent = '正在续写...';
+  document.getElementById('ep-dot').style.background = 'var(--orange)';
+  document.getElementById('btn-continue').style.display = 'none';
+  
+  try {
+    const r = await fetch(`/api/ai/write/${STATE.currentTaskId}/continue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prev_content: STATE.lastOutput,
+        instruction: '请继续写下一章，保持风格一致',
+        model_config: { type: STATE.modelType, ...STATE.modelConfig },
+        writing_style: document.getElementById('writing-style-select').value
+      })
+    });
+    
+    if (r.status === 403) {
+      toast('🔒 续写请求被拒绝');
+      document.getElementById('ep-status-text').textContent = '请求被拒绝';
+      document.getElementById('ep-dot').style.background = 'var(--red)';
+      return;
+    }
+    
+    const data = await r.json();
+    STATE.currentTaskId = data.task_id;
+    pollContinueTask(data.task_id);
+  } catch(e) { toast('续写失败: ' + e.message); }
+}
+
+function pollContinueTask(taskId) {
+  const interval = setInterval(async () => {
+    const r = await fetch(`/api/ai/write/${taskId}`);
+    const data = await r.json();
+    if (data.status === 'done') {
+      clearInterval(interval);
+      STATE.lastOutput += '\n\n' + data.output;
+      displayOutput(STATE.lastOutput);
+      
+      document.getElementById('ep-status-text').textContent = '✅ 续写完成';
+      document.getElementById('ep-dot').style.background = 'var(--green)';
+      document.getElementById('btn-continue').style.display = 'flex';
+    } else if (data.status === 'error') {
+      clearInterval(interval);
+      toast('❌ 续写失败: ' + data.error);
+    }
+  }, 1000);
+}
+
+function copyOutput() {
+  const text = document.getElementById('ep-output').innerText;
+  navigator.clipboard.writeText(text).then(() => toast('📋 已复制到剪贴板'));
+}
+
+function exportOutput() {
+  const text = document.getElementById('ep-output').innerText;
+  if (!text.trim()) { toast('暂无内容可导出'); return; }
+  const name = document.getElementById('project-name-input').value || '小说';
+  const features = STATE.license.features;
+  const formats = features ? features.export_formats : ['txt'];
+  
+  // 简单实现：目前只支持 txt 和简单的 PDF/Markdown 占位
+  // 完整的 PDF/EPUB 导出需要额外库，这里先做格式选择和提示
+  if (formats.length <= 1) {
+    // 免费版只有 txt
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name + '.txt';
+    a.click();
+    toast('💾 已导出为 ' + name + '.txt');
+  } else {
+    // 付费版：弹出格式选择
+    const fmt = prompt(`可选导出格式: ${formats.join('/')}\n请输入格式 (txt${formats.includes('pdf') ? '/pdf' : ''}${formats.includes('epub') ? '/epub' : ''}):`, 'txt');
+    if (!fmt) return;
+    
+    if (fmt.toLowerCase() === 'pdf' && formats.includes('pdf')) {
+      // PDF 导出：使用浏览器打印
+      const printWin = window.open('', '_blank');
+      printWin.document.write(`<html><head><title>${name}</title><style>body{font-family:sans-serif;line-height:1.8;padding:40px;max-width:700px;margin:auto}h1{text-align:center}</style></head><body><h1>${name}</h1>${document.getElementById('ep-output').innerHTML}</body></html>`);
+      printWin.document.close();
+      printWin.print();
+      toast('📄 已打开打印/另存为PDF');
+    } else if (fmt.toLowerCase() === 'epub' && formats.includes('epub')) {
+      toast('📖 EPUB 导出功能即将上线，敬请期待！');
+    } else {
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name + '.txt';
+      a.click();
+      toast('💾 已导出为 ' + name + '.txt');
+    }
+  }
+}
+
+// ============================================================
+//  模型配置
+// ============================================================
+let currentModelTab = 'ollama';
+
+function showModelModal() {
+  document.getElementById('model-modal').classList.add('show');
+  
+  // 恢复已保存配置
+  if (STATE.modelType) {
+    const tabs = document.querySelectorAll('.model-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    // 找到对应tab并激活
+    selectModelTab(STATE.modelType);
+    
+    // 填充字段
+    const cfg = STATE.modelConfig;
+    if (STATE.modelType === 'ollama') {
+      if (cfg.base_url) document.getElementById('ollama-url').value = cfg.base_url;
+      if (cfg.model) document.getElementById('ollama-model').value = cfg.model;
+    } else if (STATE.modelType === 'lmstudio') {
+      if (cfg.base_url) document.getElementById('lmstudio-url').value = cfg.base_url;
+      if (cfg.model) document.getElementById('lmstudio-model').value = cfg.model;
+    } else if (STATE.modelType === 'openai') {
+      if (cfg.api_key) document.getElementById('openai-key').value = cfg.api_key;
+      if (cfg.model) document.getElementById('openai-model').value = cfg.model;
+    } else if (STATE.modelType === 'deepseek') {
+      if (cfg.api_key) document.getElementById('deepseek-key').value = cfg.api_key;
+      if (cfg.model) document.getElementById('deepseek-model').value = cfg.model;
+    } else if (STATE.modelType === 'tongyi') {
+      if (cfg.api_key) document.getElementById('tongyi-key').value = cfg.api_key;
+      if (cfg.model) document.getElementById('tongyi-model').value = cfg.model;
+    } else if (STATE.modelType === 'custom') {
+      if (cfg.base_url) document.getElementById('custom-url').value = cfg.base_url;
+      if (cfg.api_key) document.getElementById('custom-key').value = cfg.api_key;
+      if (cfg.model) document.getElementById('custom-model').value = cfg.model;
+    }
+    
+    // 恢复通用推理参数
+    document.getElementById('generic-max-tokens').value = cfg.max_tokens ?? 4096;
+    document.getElementById('generic-num-ctx').value = cfg.num_ctx ?? 4096;
+    document.getElementById('generic-temperature').value = cfg.temperature ?? 0.8;
+    document.getElementById('generic-top-p').value = cfg.top_p ?? 0.95;
+    document.getElementById('generic-repeat-penalty').value = cfg.repeat_penalty ?? 1.1;
+    document.getElementById('generic-freq-penalty').value = cfg.frequency_penalty ?? 0.3;
+    document.getElementById('generic-pres-penalty').value = cfg.presence_penalty ?? 0.3;
+  }
+}
+
+function closeModelModal() {
+  document.getElementById('model-modal').classList.remove('show');
+}
+
+function selectModelTab(type, el) {
+  currentModelTab = type;
+  // 隐藏所有配置区
+  ['ollama','lmstudio','openai','deepseek','tongyi','custom'].forEach(t => {
+    const div = document.getElementById(`model-config-${t}`);
+    if (div) div.style.display = t === type ? 'block' : 'none';
+  });
+  // 激活 tab
+  document.querySelectorAll('.model-tab').forEach(tab => {
+    const tabType = tab.getAttribute('onclick')?.match(/'(\w+)'/)?.[1];
+    tab.classList.toggle('active', tabType === type);
+  });
+  document.getElementById('test-result-area').innerHTML = '';
+}
+
+async function testModelConnection() {
+  const type = currentModelTab;
+  let config = { type };
+  
+  if (type === 'ollama') {
+    config.base_url = document.getElementById('ollama-url').value;
+    config.model = document.getElementById('ollama-model').value;
+  } else if (type === 'lmstudio') {
+    config.base_url = document.getElementById('lmstudio-url').value;
+    config.model = document.getElementById('lmstudio-model').value;
+  } else if (type === 'openai') {
+    config.api_key = document.getElementById('openai-key').value;
+    config.model = document.getElementById('openai-model').value;
+    config.base_url = 'https://api.openai.com/v1';
+  } else if (type === 'deepseek') {
+    config.api_key = document.getElementById('deepseek-key').value;
+    config.model = document.getElementById('deepseek-model').value;
+    config.base_url = 'https://api.deepseek.com/v1';
+  } else if (type === 'tongyi') {
+    config.api_key = document.getElementById('tongyi-key').value;
+    config.model = document.getElementById('tongyi-model').value;
+    config.base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  } else if (type === 'custom') {
+    config.base_url = document.getElementById('custom-url').value;
+    config.api_key = document.getElementById('custom-key').value;
+    config.model = document.getElementById('custom-model').value;
+  }
+  
+  const resultArea = document.getElementById('test-result-area');
+  resultArea.innerHTML = '<div class="ai-loading"><div class="spinner"></div> 测试连接中...</div>';
+  
+  try {
+    const r = await fetch('/api/models/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, config })
+    });
+    const data = await r.json();
+    
+    if (data.ok) {
+      resultArea.innerHTML = `<div class="test-result ok">✅ 连接成功！可用模型：${data.models.slice(0, 5).join(', ')}</div>`;
+      
+      // 填充模型选项
+      if (type === 'ollama') {
+        const sel = document.getElementById('ollama-model-select');
+        sel.innerHTML = data.models.map(m => `<option value="${m}">${m}</option>`).join('');
+        if (data.models.length > 0 && !document.getElementById('ollama-model').value) {
+          document.getElementById('ollama-model').value = data.models[0];
+        }
+      } else if (type === 'lmstudio') {
+        const sel = document.getElementById('lmstudio-model-select');
+        sel.innerHTML = data.models.map(m => `<option value="${m}">${m}</option>`).join('');
+        if (data.models.length > 0 && !document.getElementById('lmstudio-model').value) {
+          document.getElementById('lmstudio-model').value = data.models[0];
+        }
+      }
+    } else {
+      resultArea.innerHTML = `<div class="test-result fail">❌ 连接失败：${data.error}</div>`;
+    }
+  } catch(e) {
+    resultArea.innerHTML = `<div class="test-result fail">❌ 请求失败：${e.message}</div>`;
+  }
+}
+
+function saveModelConfig() {
+  const type = currentModelTab;
+  let config = {};
+  
+  if (type === 'ollama') {
+    config.base_url = document.getElementById('ollama-url').value;
+    config.model = document.getElementById('ollama-model').value;
+  } else if (type === 'lmstudio') {
+    config.base_url = document.getElementById('lmstudio-url').value;
+    config.model = document.getElementById('lmstudio-model').value;
+  } else if (type === 'openai') {
+    config.api_key = document.getElementById('openai-key').value;
+    config.model = document.getElementById('openai-model').value;
+    config.base_url = 'https://api.openai.com/v1';
+  } else if (type === 'deepseek') {
+    config.api_key = document.getElementById('deepseek-key').value;
+    config.model = document.getElementById('deepseek-model').value;
+    config.base_url = 'https://api.deepseek.com/v1';
+  } else if (type === 'tongyi') {
+    config.api_key = document.getElementById('tongyi-key').value;
+    config.model = document.getElementById('tongyi-model').value;
+    config.base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  } else if (type === 'custom') {
+    config.base_url = document.getElementById('custom-url').value;
+    config.api_key = document.getElementById('custom-key').value;
+    config.model = document.getElementById('custom-model').value;
+  }
+  
+  // 通用推理参数
+  config.max_tokens = parseInt(document.getElementById('generic-max-tokens').value) || 4096;
+  config.num_ctx = parseInt(document.getElementById('generic-num-ctx').value) || 4096;
+  config.temperature = parseFloat(document.getElementById('generic-temperature').value) || 0.8;
+  config.top_p = parseFloat(document.getElementById('generic-top-p').value) || 0.95;
+  config.repeat_penalty = parseFloat(document.getElementById('generic-repeat-penalty').value) || 1.1;
+  config.frequency_penalty = parseFloat(document.getElementById('generic-freq-penalty').value) || 0.3;
+  config.presence_penalty = parseFloat(document.getElementById('generic-pres-penalty').value) || 0.3;
+  
+  STATE.modelType = type;
+  STATE.modelConfig = config;
+  localStorage.setItem('sf_model_config', JSON.stringify(config));
+  localStorage.setItem('sf_model_type', type);
+  
+  updateModelBadge();
+  closeModelModal();
+  toast('✅ 模型配置已保存');
+}
+
+function updateModelBadge() {
+  const dot = document.getElementById('model-dot');
+  const label = document.getElementById('model-label');
+  
+  const names = {
+    ollama: '🦙 Ollama',
+    lmstudio: '🔬 LM Studio',
+    openai: '🌐 OpenAI',
+    deepseek: '🌊 DeepSeek',
+    tongyi: '🌟 通义',
+    custom: '⚙️ 自定义'
+  };
+  
+  if (STATE.modelType) {
+    dot.className = 'dot connected';
+    label.textContent = names[STATE.modelType] + (STATE.modelConfig.model ? ` · ${STATE.modelConfig.model}` : '');
+  } else {
+    dot.className = 'dot';
+    label.textContent = '未配置模型';
+  }
+}
+
+// ============================================================
+//  Toast 提示
+// ============================================================
+function toast(msg, duration = 2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), duration);
+}
+
+// 缩放控制
+function zoomIn() { STATE.scale = Math.min(2.5, STATE.scale * 1.2); updateCanvasTransform(); }
+function zoomOut() { STATE.scale = Math.max(0.3, STATE.scale / 1.2); updateCanvasTransform(); }
+function zoomReset() { STATE.scale = 1; STATE.offsetX = 40; STATE.offsetY = 40; updateCanvasTransform(); }
+
+// ============================================================
+//  启动
+// ============================================================
+init();
+</script>
+
+<!-- 流程指示器 -->
+<div id="flow-indicator"></div>
+
+</body>
+</html>
