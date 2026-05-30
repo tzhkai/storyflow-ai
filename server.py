@@ -985,6 +985,9 @@ def continue_writing(task_id):
             writing_tasks[task_id_new]['status'] = 'running'
             prev_content = data.get('prev_content', '')
             instruction = data.get('instruction', '请继续写下一章')
+            # 计算下一章章节号，防止 LLM 跳章
+            next_chapter_num = len(prev_summaries) + 1
+            instruction = f"⚠️ 必须写第{next_chapter_num}章，绝对不能跳章。\n\n{instruction}"
             style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
 
             # 根据 anti_ai_level 决定去AI味强度
