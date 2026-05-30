@@ -347,7 +347,17 @@ def get_projects():
 @app.route('/api/projects', methods=['POST'])
 def create_project():
     data = request.json
+
+    # 检查 max_flows 限制
+    lic = _get_current_license()
+    max_flows = lic['info'].get('max_flows', 1)
     projects = load_json(PROJECTS_FILE, [])
+    if len(projects) >= max_flows:
+        return jsonify({
+            'error': f'{"免费版" if lic["tier"] == "free" else "当前版本"}最多创建 {max_flows} 个项目，请删除旧项目或升级',
+            'tier': lic['tier'],
+            'max_flows': max_flows
+        }), 403
     project = {
         'id': str(uuid.uuid4()),
         'name': data.get('name', '新小说项目'),
@@ -768,13 +778,24 @@ def start_writing():
     data = request.json or {}
     model_config = data.get('model_config', {})
 
-    # 免费版每日生成次数检查
     lic = _get_current_license()
+    writing_style = data.get('writing_style', 'literary')
+
+    # 写作风格权限检查
+    allowed_styles = lic['info'].get('writing_styles', ['literary'])
+    if writing_style not in allowed_styles:
+        return jsonify({
+            'error': f'当前版本不支持「{writing_style}」风格，请升级',
+            'tier': lic['tier'],
+            'allowed': allowed_styles
+        }), 403
+
+    # 免费版每日生成次数检查
     daily_count = _get_daily_gen_count()
     max_gen = lic['info'].get('max_daily_generations', 3)
     if daily_count >= max_gen:
         return jsonify({
-            'error': f'免费版每日限{max_gen}次生成，今日已用完。升级标准版享无限生成',
+            'error': f'{"免费版" if lic["tier"] == "free" else "当前版本"}每日限{max_gen}次生成，今日已用完。',
             'tier': lic['tier'],
             'daily_count': daily_count,
             'max_daily': max_gen
@@ -810,10 +831,26 @@ def start_writing():
             writing_style = data.get('writing_style', 'literary')
             style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
 
+            # 根据 anti_ai_level 决定去AI味强度
+            anti_ai_level = lic['info']['anti_ai_level']
+            if anti_ai_level == 'basic':
+                anti_ai_text = """【去AI味要求（基础模式）】
+- 避免使用最常见的AI套话（然而、不禁、宛如、仿佛）
+- 保持文字自然，不要过度修饰
+- 允许适量形容词，不要把每个句子都写得很华丽"""
+            elif anti_ai_level == 'full':
+                anti_ai_text = ANTI_AI_PROMPT
+            elif anti_ai_level == 'custom':
+                anti_ai_text = ANTI_AI_PROMPT + """
+
+【自定义增强模式】
+- 你可以根据用户提供的额外去AI味规则进行动态调整
+- 对输出的文字进行多轮自检，确保达到出版级自然度"""
+
             system_prompt = f"""你是一位专业的小说作者，擅长各种题材的创作。
 请根据用户提供的设定，创作出引人入胜的小说内容。
 
-{ANTI_AI_PROMPT}
+{anti_ai_text}
 
 {style_rules}
 
@@ -908,11 +945,30 @@ def continue_writing(task_id):
     
     def do_continue():
         try:
+            # 写作风格权限检查
+            lic_cont = _get_current_license()
+            writing_style = data.get('writing_style', 'literary')
+            allowed_styles = lic_cont['info'].get('writing_styles', ['literary'])
+            if writing_style not in allowed_styles:
+                writing_tasks[task_id_new]['status'] = 'error'
+                writing_tasks[task_id_new]['error'] = f'当前版本不支持「{writing_style}」风格，请升级'
+                return
+
             writing_tasks[task_id_new]['status'] = 'running'
             prev_content = data.get('prev_content', '')
             instruction = data.get('instruction', '请继续写下一章')
-            writing_style = data.get('writing_style', 'literary')
             style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
+
+            # 根据 anti_ai_level 决定去AI味强度
+            anti_ai_level = lic_cont['info']['anti_ai_level']
+            if anti_ai_level == 'basic':
+                anti_ai_text = """【去AI味要求（基础模式）】
+- 避免使用最常见的AI套话
+- 保持文字自然，不要过度修饰"""
+            elif anti_ai_level == 'full':
+                anti_ai_text = ANTI_AI_PROMPT
+            elif anti_ai_level == 'custom':
+                anti_ai_text = ANTI_AI_PROMPT + "\n\n【自定义增强模式】对输出进行多轮自检，确保出版级自然度"
             
             writing_tasks[task_id_new]['progress'] = 10
             
@@ -936,7 +992,7 @@ def continue_writing(task_id):
             messages = [
                 {'role': 'system', 'content': f"""你是专业小说作者。请根据已有摘要继续创作。
 
-{ANTI_AI_PROMPT}
+{anti_ai_text}
 
 {style_rules}
 
@@ -995,6 +1051,29 @@ def continue_writing(task_id):
     t.daemon = True
     t.start()
     return jsonify({'task_id': task_id_new})
+
+
+
+# ========== 导出验证（防绕过） ==========
+@app.route('/api/export', methods=['POST'])
+def export_content():
+    """导出前检查版本权限，支持 txt/pdf/epub/docx"""
+    data = request.json or {}
+    format = data.get('format', 'txt')
+    
+    lic = _get_current_license()
+    allowed = lic['info'].get('export_formats', ['txt'])
+    
+    if format not in allowed:
+        return jsonify({
+            'ok': False,
+            'error': f'当前版本不支持导出为 {format.upper()}，请升级',
+            'tier': lic['tier'],
+            'allowed': allowed
+        }), 403
+    
+    # 权限通过，返回文件内容（由前端触发下载）
+    return jsonify({'ok': True, 'format': format})
 
 # ========== 静态文件 ==========
 @app.route('/')

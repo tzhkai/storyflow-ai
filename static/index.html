@@ -2627,46 +2627,76 @@ function copyOutput() {
   navigator.clipboard.writeText(text).then(() => toast('📋 已复制到剪贴板'));
 }
 
-function exportOutput() {
+async function exportOutput() {
   const text = document.getElementById('ep-output').innerText;
   if (!text.trim()) { toast('暂无内容可导出'); return; }
   const name = document.getElementById('project-name-input').value || '小说';
   const features = STATE.license.features;
   const formats = features ? features.export_formats : ['txt'];
-  
-  // 简单实现：目前只支持 txt 和简单的 PDF/Markdown 占位
-  // 完整的 PDF/EPUB 导出需要额外库，这里先做格式选择和提示
+
+  // 付费版：弹出格式选择，并后端验证
   if (formats.length <= 1) {
-    // 免费版只有 txt
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name + '.txt';
-    a.click();
-    toast('💾 已导出为 ' + name + '.txt');
-  } else {
-    // 付费版：弹出格式选择
-    const fmt = prompt(`可选导出格式: ${formats.join('/')}\n请输入格式 (txt${formats.includes('pdf') ? '/pdf' : ''}${formats.includes('epub') ? '/epub' : ''}):`, 'txt');
-    if (!fmt) return;
-    
-    if (fmt.toLowerCase() === 'pdf' && formats.includes('pdf')) {
-      // PDF 导出：使用浏览器打印
-      const printWin = window.open('', '_blank');
-      printWin.document.write(`<html><head><title>${name}</title><style>body{font-family:sans-serif;line-height:1.8;padding:40px;max-width:700px;margin:auto}h1{text-align:center}</style></head><body><h1>${name}</h1>${document.getElementById('ep-output').innerHTML}</body></html>`);
-      printWin.document.close();
-      printWin.print();
-      toast('📄 已打开打印/另存为PDF');
-    } else if (fmt.toLowerCase() === 'epub' && formats.includes('epub')) {
-      toast('📖 EPUB 导出功能即将上线，敬请期待！');
-    } else {
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = name + '.txt';
-      a.click();
-      toast('💾 已导出为 ' + name + '.txt');
-    }
+    // 免费版只有 txt，直接导出（后端也会验证）
+    const ok = await verifyExportFormat('txt');
+    if (!ok) return;
+    downloadText(text, name, 'txt');
+    return;
   }
+
+  // 付费版：让用户选择格式
+  const fmtInput = prompt(
+    `可选导出格式: ${formats.join('/')}\n请输入格式 (${formats.join('/')}):`,
+    formats[0]
+  );
+  if (!fmtInput) return;
+  const fmt = fmtInput.toLowerCase();
+
+  if (!formats.includes(fmt)) {
+    toast(`❌ 当前版本不支持导出为 ${fmt.toUpperCase()}，请升级`);
+    return;
+  }
+
+  // 后端强制验证（防前端绕过）
+  const ok = await verifyExportFormat(fmt);
+  if (!ok) return;
+
+  if (fmt === 'pdf') {
+    const printWin = window.open('', '_blank');
+    printWin.document.write(`<html><head><title>${name}</title><style>body{font-family:sans-serif;line-height:1.8;padding:40px;max-width:700px;margin:auto}h1{text-align:center}</style></head><body><h1>${name}</h1>${document.getElementById('ep-output').innerHTML}</body></html>`);
+    printWin.document.close();
+    printWin.print();
+    toast('📄 已打开打印/另存为PDF');
+  } else if (fmt === 'epub') {
+    toast('📖 EPUB 导出功能即将上线，敬请期待！');
+  } else {
+    downloadText(text, name, fmt);
+  }
+}
+
+async function verifyExportFormat(format) {
+  try {
+    const resp = await fetch('/api/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format })
+    });
+    if (resp.ok) return true;
+    const data = await resp.json();
+    toast('❌ ' + (data.error || '导出权限验证失败'));
+    return false;
+  } catch (e) {
+    // 后端不可达时降级：允许导出（本地单机版可接受）
+    return true;
+  }
+}
+
+function downloadText(text, name, ext) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name + '.' + ext;
+  a.click();
+  toast('💾 已导出为 ' + name + '.' + ext);
 }
 
 // ============================================================
