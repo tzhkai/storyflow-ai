@@ -2,6 +2,34 @@
 AI Novel Writing Platform - Backend Server
 Port: 8505
 """
+# ========== 启动检查：缺依赖直接提示 ==========
+import sys
+
+_missing = []
+try:
+    from flask import Flask, request, jsonify, send_from_directory
+except ImportError:
+    _missing.append('flask')
+
+try:
+    import flask_cors
+except ImportError:
+    _missing.append('flask-cors')
+
+try:
+    import requests
+except ImportError:
+    _missing.append('requests')
+
+if _missing:
+    print("\n" + "="*50)
+    print("❌ 缺少依赖：", ', '.join(_missing))
+    print("请在终端运行：")
+    print(f"  {sys.executable} -m pip install " + ' '.join(_missing))
+    print("="*50 + "\n")
+    sys.exit(1)
+
+# ========== 正式导入 ==========
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import json
