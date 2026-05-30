@@ -86,7 +86,7 @@ ollama pull qwen2.5:7b
 2. 输入购买获得的 License Key（格式 `SF-STD-xxxx` 或 `SF-PRO-xxxx`）
 3. 点击激活，即时生效
 
-> 购买地址：[面包多商品页]（审核通过后补充链接）
+> 购买地址：<a href="https://mbd.pub/search?q=StoryFlow">面包多搜索「StoryFlow」</a>（审核通过后可直接购买）
 
 ## 使用技巧
 
