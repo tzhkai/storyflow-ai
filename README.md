@@ -36,8 +36,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/你的用户名/storyflow.git
-cd storyflow
+git clone https://github.com/tzhkai/storyflow-ai.git
+cd storyflow-ai
 
 # 安装依赖
 pip install -r requirements.txt
