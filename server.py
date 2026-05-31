@@ -180,6 +180,33 @@ def _increment_daily_gen_count():
     data['count'] = data.get('count', 0) + 1
     save_json(count_file, data)
 
+# ========== 平台 API Token 追踪 ==========
+TOKEN_USAGE_FILE = DATA_DIR / 'platform_tokens.json'
+
+def _get_platform_token_usage():
+    return load_json(TOKEN_USAGE_FILE, {})
+
+def _get_license_token_id():
+    saved = load_json(LICENSE_FILE, {})
+    key = saved.get('key', 'free')
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+def _get_remaining_platform_tokens():
+    lic = _get_current_license()
+    total = lic['info'].get('platform_api_tokens', 0)
+    if total == 0:
+        return 0
+    usage = _get_platform_token_usage()
+    lid = _get_license_token_id()
+    used = usage.get(lid, 0)
+    return max(0, total - used)
+
+def _consume_platform_tokens(n):
+    usage = _get_platform_token_usage()
+    lid = _get_license_token_id()
+    usage[lid] = usage.get(lid, 0) + n
+    save_json(TOKEN_USAGE_FILE, usage)
+
 def load_json(path, default):
     if path.exists():
         try:
