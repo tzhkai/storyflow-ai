@@ -2324,24 +2324,31 @@ const Panel = {
       return;
     }
     
+    const isPro = STATE.license.tier === 'professional';
     content.innerHTML = `
       <div class="preset-grid">
-        ${allOptions.map(opt => `
-          <div class="preset-card ${opt.ai_generated ? 'ai-card' : ''} ${Panel.tempSelected?.id === opt.id ? 'selected' : ''}"
-               onclick="Panel.select(${JSON.stringify(opt).replace(/"/g, '&quot;')})">
+        ${allOptions.map(opt => {
+          const locked = opt.pro && !isPro;
+          return `
+          <div class="preset-card ${opt.ai_generated ? 'ai-card' : ''} ${locked ? 'locked' : ''} ${Panel.tempSelected?.id === opt.id ? 'selected' : ''}"
+               ${locked ? '' : `onclick="Panel.select(${JSON.stringify(opt).replace(/"/g, '&quot;')})"`}
+               style="${locked ? 'opacity:0.5;cursor:not-allowed' : ''}">
             <div class="pc-name">
-              ${opt.name}
+              ${locked ? '🔒 ' : ''}${opt.name}
               ${opt.ai_generated ? '<span class="pc-ai-badge">✨ AI生成</span>' : ''}
             </div>
-            <div class="pc-desc">${opt.desc || ''}</div>
-            ${opt.tags ? `<div class="pc-tags">${opt.tags.map(t => `<span class="pc-tag ${opt.ai_generated ? 'ai' : ''}">${t}</span>`).join('')}</div>` : ''}
+            <div class="pc-desc">${locked ? '专业版专属' : (opt.desc || '')}</div>
           </div>
-        `).join('')}
+        `}).join('')}
       </div>
     `;
   },
 
   select(opt) {
+    if (opt.pro && STATE.license.tier !== 'professional') {
+      toast('🔒 此预设仅专业版可用，请升级');
+      return;
+    }
     Panel.tempSelected = opt;
     Panel.render();
   },
