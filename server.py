@@ -632,6 +632,7 @@ def call_llm(config, messages, stream=False):
         api_key = config.get('api_key', '')
         base_url = config.get('base_url', 'https://api.openai.com/v1')
         model = config.get('model', 'gpt-3.5-turbo')
+        print(f'[DEBUG] call_llm: type={model_type}, model={model}, key={api_key[:10] if api_key else "EMPTY"}..., url={base_url}', flush=True)
         headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
         payload = {
             'model': model,
