@@ -35,6 +35,8 @@ from flask_cors import CORS
 import json
 import os
 import hashlib
+import base64
+from cryptography.fernet import Fernet
 import hmac
 import requests
 import threading
@@ -68,8 +70,22 @@ if _env_file.exists():
 # 签名密钥（生产环境应从环境变量读取，此处为演示用）
 _LICENSE_SECRET = b'storyflow-license-secret-2026'
 
-# ========== 平台 API（从环境变量或 .env 文件读取） ==========
-PLATFORM_API_KEY = os.environ.get('SF_PLATFORM_KEY', '')
+# ========== 平台 API（从加密文件或环境变量读取） ==========
+def _load_platform_key():
+    """从加密文件或环境变量加载平台 API Key"""
+    enc_path = Path(__file__).parent / 'platform_key.bin'
+    if enc_path.exists():
+        try:
+            raw = hashlib.sha256(
+                _kfrag_1() + b"||" + _kfrag_2() + b"||" + _kfrag_3() + b"||" + _kfrag_4()
+            ).digest()
+            f = Fernet(base64.urlsafe_b64encode(raw))
+            return f.decrypt(enc_path.read_bytes()).decode()
+        except Exception:
+            pass  # fallback to env var
+    return os.environ.get('SF_PLATFORM_KEY', '')
+
+PLATFORM_API_KEY = _load_platform_key()
 PLATFORM_API_MODEL = os.environ.get('SF_PLATFORM_MODEL', 'deepseek-v4-flash')
 LICENSE_FILE = DATA_DIR / 'license.json'
 
@@ -110,6 +126,10 @@ TIER_FEATURES = {
         'template_types': ['genre', 'world', 'protagonist', 'outline', 'conflict', 'style', 'setting_detail', 'romance', 'chapter', 'characters', 'pov', 'custom'],
     },
 }
+
+# KEY FRAGMENT 1/4 (分散在代码各处以增加逆向难度)
+def _kfrag_1():
+    return b"sf-enc-storyflow"
 
 def _sign_key(key_data: str) -> str:
     """HMAC-SHA256 签名"""
@@ -165,6 +185,10 @@ def _get_daily_gen_count() -> int:
     count_file = DATA_DIR / f'gen_count_{today}.json'
     data = load_json(count_file, {'count': 0})
     return data.get('count', 0)
+
+# KEY FRAGMENT 2/4
+def _kfrag_2():
+    return b"2026-platform-key"
 
 def _increment_daily_gen_count():
     """增加今日生成次数"""
@@ -817,6 +841,10 @@ def _extract_chapter_summary(text, max_len=300):
             break
     return ' '.join(summary_lines)[:max_len]
 
+# KEY FRAGMENT 3/4
+def _kfrag_3():
+    return b"deepseek-v4"
+
 def _auto_continue(model_config, messages, initial_result, max_retries=2):
     """自动续写：如果输出不完整，追加续写调用"""
     result = initial_result
@@ -1366,6 +1394,9 @@ def continue_writing(task_id):
     t.start()
     return jsonify({'task_id': task_id_new})
 
+# KEY FRAGMENT 4/4
+def _kfrag_4():
+    return b"8505"
 
 
 # ========== 导出验证（防绕过） ==========
