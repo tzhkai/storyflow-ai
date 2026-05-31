@@ -1220,7 +1220,8 @@ def continue_writing(task_id):
             instruction = data.get('instruction', '请继续写下一章')
             # 计算下一章章节号，防止 LLM 跳章
             next_chapter_num = len(prev_summaries) + 1
-            instruction = f"⚠️ 必须写第{next_chapter_num}章，绝对不能跳章。\n\n{instruction}"
+            instruction = f"⚠️ CRITICAL: 这是第{next_chapter_num}章。你的输出必须以「第{next_chapter_num}章」作为章节标题开头，绝对不能写第1章或任何其他章节号。\n\n{instruction}"
+            print(f'[DEBUG] continue: chapter={next_chapter_num}, summaries={len(prev_summaries)}', flush=True)
             style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
 
             # 根据 anti_ai_level 决定去AI味强度
