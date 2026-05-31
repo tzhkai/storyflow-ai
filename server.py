@@ -1255,7 +1255,24 @@ def export_content():
 # ========== 静态文件 ==========
 @app.route('/')
 def index():
-    return send_from_directory('static', 'index.html')
+    lic = _get_current_license()
+    info = dict(lic['info'])
+    if info.get('platform_api_tokens', 0) > 0:
+        remaining = _get_remaining_platform_tokens()
+        info['platform_tokens_remaining'] = remaining
+        info['platform_tokens_total'] = lic['info']['platform_api_tokens']
+    license_json = json.dumps({'tier': lic['tier'], 'features': info}, ensure_ascii=False)
+    
+    html_path = Path(__file__).parent / 'static' / 'index.html'
+    with open(html_path, 'r', encoding='utf-8') as f:
+        html = f.read()
+    
+    # 注入 License 到页面（避免异步 fetch 失败）
+    inject = f'\n<script>window.__LICENSE__ = {license_json};</script>\n</head>'
+    html = html.replace('</head>', inject, 1)
+    
+    from flask import Response
+    return Response(html, mimetype='text/html')
 
 @app.route('/<path:filename>')
 def static_files(filename):

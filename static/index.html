@@ -1249,6 +1249,15 @@ const NODE_TYPES = [
 // ============================================================
 async function loadLicense() {
   try {
+    // 优先从后端注入的全局变量读取（零延迟，不依赖网络）
+    if (window.__LICENSE__) {
+      STATE.license = window.__LICENSE__;
+      TIER_FEATURES_CACHE = window.__LICENSE__.features;
+      updateLicenseBadge();
+      renderPalette();
+      return;
+    }
+    // 降级：异步请求
     const fr = await fetch('/api/license/features');
     const fdata = await fr.json();
     STATE.license = { tier: fdata.tier, features: fdata.features };
@@ -1406,6 +1415,7 @@ async function activateLicense() {
       sucEl.textContent = data.message;
       sucEl.style.display = 'block';
       input.value = '';
+      delete window.__LICENSE__;  // 清除缓存，强制重新获取
       await loadLicense();
     } else {
       errEl.textContent = data.error || '激活失败';
@@ -1420,6 +1430,7 @@ async function activateLicense() {
 async function deactivateLicense() {
   try {
     await fetch('/api/license/deactivate', { method: 'POST' });
+    delete window.__LICENSE__;  // 清除缓存
     await loadLicense();
     toast('已退回免费版');
   } catch (e) {
