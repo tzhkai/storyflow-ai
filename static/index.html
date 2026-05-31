@@ -803,6 +803,8 @@
     #right-panel { display: none; }
     #main-content { grid-template-columns: 120px 1fr; }
   }
+  .prompt-preset { font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);color:var(--text2);cursor:pointer;transition:all 0.15s;white-space:nowrap }
+  .prompt-preset:hover { background:var(--accent);color:#fff;border-color:var(--accent) }
 </style>
 </head>
 <body>
@@ -1195,8 +1197,18 @@
           <input class="form-input" id="generic-pres-penalty" type="number" value="0.3" min="-2" max="2" step="0.1" style="padding:5px 8px;font-size:12px">
         </div>
         <div class="form-group" style="margin-bottom:4px">
-          <label class="form-label" style="font-size:11px">自定义创作指令 <span style="color:var(--text3)">(选填，告诉AI你想要的写作风格)</span></label>
-          <textarea id="generic-prompt" rows="4" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text1);resize:vertical;box-sizing:border-box" placeholder="例如：&#10;1. 多使用环境描写来烘托氛围&#10;2. 对话要体现人物性格&#10;3. 每章结尾留悬念&#10;4. 少用成语和华丽辞藻，保持简洁自然"></textarea>
+          <label class="form-label" style="font-size:11px">自定义创作指令 <span style="color:var(--text3)">(选填，告诉AI你想要的写作风格和规则)</span></label>
+          <textarea id="generic-prompt" rows="4" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text1);resize:vertical;box-sizing:border-box">1. 多用环境描写和感官细节烘托氛围
+2. 对话要贴合人物性格和身份
+3. 每章结尾留有悬念或转折
+4. 少用成语和套话，语言自然流畅</textarea>
+          <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
+            <button class="prompt-preset" data-prompt="1. 多用环境描写和感官细节烘托氛围\n2. 对话要贴合人物性格和身份\n3. 每章结尾留有悬念或转折\n4. 少用成语和套话，语言自然流畅">📖 通用流畅</button>
+            <button class="prompt-preset" data-prompt="1. 文笔要细腻优美，多用比喻和意象\n2. 侧重心理描写和情感渲染\n3. 节奏舒缓，给读者沉浸感\n4. 避免大白话和过于直白的表达">🎨 文学细腻</button>
+            <button class="prompt-preset" data-prompt="1. 节奏要快，剧情紧凑不拖沓\n2. 每章至少有一个爽点或高潮\n3. 打斗场面要热血有冲击力\n4. 主角智商在线，不降智">⚡ 爽文节奏</button>
+            <button class="prompt-preset" data-prompt="1. 注重逻辑推理和细节铺垫\n2. 对话中隐藏线索，不直接说明\n3. 反转要出乎意料但合情合理\n4. 保持悬疑感，不提前剧透">🔍 悬疑烧脑</button>
+            <button class="prompt-preset" data-prompt="">🗑️ 清空</button>
+          </div>
         </div>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px;padding:4px 8px;background:var(--bg2);border-radius:6px">
@@ -3504,6 +3516,14 @@ function saveModelConfig() {
   closeModelModal();
   toast('✅ 模型配置已保存');
 }
+
+// 自定义创作指令预设按钮
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.prompt-preset');
+  if (btn) {
+    document.getElementById('generic-prompt').value = btn.dataset.prompt;
+  }
+});
 
 function updateModelBadge() {
   const dot = document.getElementById('model-dot');
