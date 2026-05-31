@@ -1113,6 +1113,9 @@ def continue_writing(task_id):
             _increment_daily_gen_count()
                 
         except Exception as e:
+            import traceback
+            print(f'[ERROR] continue_writing failed: {e}', flush=True)
+            traceback.print_exc()
             writing_tasks[task_id_new]['status'] = 'error'
             writing_tasks[task_id_new]['error'] = str(e)
     
