@@ -802,9 +802,20 @@
   <input id="project-name-input" type="text" value="新小说项目" placeholder="项目名称">
   <div class="sep"></div>
 
-  <button class="btn btn-secondary btn-icon" onclick="App.newProject()" title="新建项目">📄</button>
+  <div id="project-dropdown">
+    <div id="project-trigger" onclick="toggleProjectList()" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 10px;border-radius:6px;background:var(--bg2);font-size:13px">
+      📁 <span id="current-project-name">我的项目</span> ▾
+    </div>
+    <div id="project-list" class="dropdown-menu" style="display:none;position:absolute;top:100%;right:0;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:240px;max-height:300px;overflow-y:auto;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,0.2)">
+      <div id="project-list-items"></div>
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding:8px 10px">
+        <input id="project-rename-input" placeholder="新建项目名称" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;font-size:12px" 
+               onkeydown="if(event.key==='Enter'){App.newProject()}">
+      </div>
+    </div>
+  </div>
+
   <button class="btn btn-secondary btn-icon" onclick="App.saveProject()" title="保存">💾</button>
-  <button class="btn btn-secondary btn-icon" onclick="App.saveAsTemplate()" title="保存为模板">📌</button>
   <button class="btn btn-secondary" onclick="App.clearCanvas()">🗑️ 清空</button>
   <button class="btn btn-secondary" onclick="App.fitView()">⊞ 适应</button>
 
@@ -1658,18 +1669,34 @@ async function loadProjects() {
 }
 
 function renderProjectList() {
-  const el = document.getElementById('sidebar-projects');
-  if (STATE.projects.length === 0) {
-    el.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:12px;text-align:center">暂无项目，新建一个吧</div>';
+  const el = document.getElementById('project-list-items');
+  if (!STATE.projects.length) {
+    el.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:12px;text-align:center">暂无项目</div>';
     return;
   }
-  el.innerHTML = STATE.projects.slice().reverse().map(p => `
-    <div class="project-item ${p.id === STATE.currentProjectId ? 'active' : ''}" 
-         onclick="App.loadProject('${p.id}')">
-      <div class="proj-name">${p.name}</div>
-      <div class="proj-time">${new Date(p.updated * 1000).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
-    </div>
-  `).join('');
+  el.innerHTML = STATE.projects.slice().reverse().map(p => {
+    const hasOutput = p.output && p.output.length > 100;
+    const wordCount = hasOutput ? Math.round(p.output.length / 1000) * 1000 : 0;
+    return `<div class="project-item ${p.id === STATE.currentProjectId ? 'active' : ''}" 
+        style="padding:8px 10px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12px">
+      <div style="flex:1;overflow:hidden" onclick="App.loadProject('${p.id}');closeProjectList()">
+        <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+        <div style="color:var(--text3);font-size:11px">${new Date(p.updated*1000).toLocaleDateString('zh-CN')} · ${hasOutput ? `约${(wordCount/1000).toFixed(1)}千字` : '未开始'}</div>
+      </div>
+      ${hasOutput ? `<button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="App.resumeWriting('${p.id}');closeProjectList()">续写</button>` : ''}
+      <button style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:2px" 
+        onclick="event.stopPropagation();App.deleteProject('${p.id}')" title="删除">🗑️</button>
+    </div>`;
+  }).join('');
+}
+
+function toggleProjectList() {
+  const list = document.getElementById('project-list');
+  list.style.display = list.style.display === 'none' ? 'block' : 'none';
+}
+
+function closeProjectList() {
+  document.getElementById('project-list').style.display = 'none';
 }
 
 // ============================================================
@@ -1720,14 +1747,16 @@ const App = {
   },
 
   async saveProject() {
-    const name = document.getElementById('project-name-input').value || '新项目';
+    const name = document.getElementById('project-rename-input').value || document.getElementById('current-project-name').textContent || '我的项目';
     const flowConfig = buildFlowConfig();
     const data = {
       name,
       nodes: Object.values(STATE.nodes),
       edges: STATE.edges,
       settings: { model: STATE.modelConfig, modelType: STATE.modelType },
-      flow_config: flowConfig
+      flow_config: flowConfig,
+      output: STATE.lastOutput || '',  // 保存写作内容
+      task_id: STATE.currentTaskId || '',  // 保存任务ID用于续写
     };
     try {
       let r;
@@ -1743,6 +1772,8 @@ const App = {
         STATE.currentProjectId = proj.id;
       }
       await loadProjects();
+      document.getElementById('current-project-name').textContent = name;
+      closeProjectList();
       toast('✅ 项目已保存');
     } catch(e) { toast('❌ 保存失败: ' + e.message); }
   },
@@ -1774,11 +1805,73 @@ const App = {
     } catch(e) { toast('❌ 加载失败'); }
   },
 
+  async saveProjectQuiet() {
+    // 静默保存，不弹 toast
+    if (!STATE.lastOutput) return;
+    const name = document.getElementById('current-project-name').textContent || '我的项目';
+    const data = {
+      name,
+      nodes: Object.values(STATE.nodes),
+      edges: STATE.edges,
+      settings: { model: STATE.modelConfig, modelType: STATE.modelType },
+      flow_config: buildFlowConfig(),
+      output: STATE.lastOutput,
+      task_id: STATE.currentTaskId || '',
+    };
+    try {
+      if (STATE.currentProjectId) {
+        await fetch(`/api/projects/${STATE.currentProjectId}`, {
+          method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+        });
+      } else {
+        const r = await fetch('/api/projects', {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+        });
+        const proj = await r.json();
+        STATE.currentProjectId = proj.id;
+        document.getElementById('current-project-name').textContent = name;
+      }
+    } catch(e) {}
+  },
+
   newProject() {
+    const nameInput = document.getElementById('project-rename-input');
+    const name = nameInput.value.trim() || '我的项目';
+    nameInput.value = '';
     STATE.currentProjectId = null;
     App.clearCanvas();
-    document.getElementById('project-name-input').value = '新小说项目';
+    document.getElementById('current-project-name').textContent = name;
+    STATE.lastOutput = '';
+    STATE.currentTaskId = null;
     renderProjectList();
+    closeProjectList();
+  },
+
+  resumeWriting(projectId) {
+    App.loadProject(projectId);
+    const proj = STATE.projects.find(p => p.id === projectId);
+    if (proj && proj.output) {
+      STATE.lastOutput = proj.output;
+      STATE.currentTaskId = proj.task_id || null;
+      document.getElementById('ep-output').innerHTML = proj.output.replace(/\n/g, '<br>');
+      document.getElementById('btn-continue').style.display = 'flex';
+      document.getElementById('ep-status-text').textContent = '已加载';
+      document.getElementById('ep-dot').style.background = 'var(--green)';
+    }
+    toast('📂 项目已加载，可继续写作');
+  },
+
+  async deleteProject(projectId) {
+    if (!confirm('确定删除此项目？内容不可恢复！')) return;
+    try {
+      await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+      if (STATE.currentProjectId === projectId) {
+        STATE.currentProjectId = null;
+        STATE.lastOutput = '';
+      }
+      await loadProjects();
+      toast('🗑️ 已删除');
+    } catch(e) { toast('删除失败'); }
   },
 
   loadTemplate(type) {
@@ -2673,6 +2766,7 @@ function pollWritingTask(taskId) {
         document.getElementById('ep-status-text').textContent = '✅ 生成完成';
         document.getElementById('ep-dot').style.background = 'var(--green)';
         document.getElementById('btn-continue').style.display = 'flex';
+        App.saveProjectQuiet();  // 自动保存
       } else if (data.status === 'error') {
         clearInterval(interval);
         document.getElementById('ep-output').innerHTML = `<div style="color:var(--red);padding:20px">❌ 生成失败: ${data.error}</div>`;
@@ -2836,6 +2930,7 @@ function pollContinueTask(taskId) {
       document.getElementById('ep-status-text').textContent = '✅ 续写完成';
       document.getElementById('ep-dot').style.background = 'var(--green)';
       document.getElementById('btn-continue').style.display = 'flex';
+      App.saveProjectQuiet();
     } else if (data.status === 'error') {
       clearInterval(interval);
       toast('❌ 续写失败: ' + data.error);
