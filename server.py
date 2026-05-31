@@ -1102,6 +1102,8 @@ def start_writing():
             setting_detail = flow_config.get('setting_detail', {}).get('selected', {})
             custom_notes = flow_config.get('custom_notes', '')
 
+            custom_prompt = data.get('custom_prompt', '')
+
             writing_style = data.get('writing_style', 'literary')
             style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
 
@@ -1138,6 +1140,9 @@ def start_writing():
 7. 章节标题格式必须为「第X章」（X为中文数字），不得使用其他格式
 8. 确保输出完整，不要中途截断
 9. 绝不要写出"AI味"的文字——避免套话、虚词堆叠、形容词泛滥"""
+
+            if custom_prompt:
+                system_prompt += f"\n\n【用户自定义创作指令】\n{custom_prompt}\n"
 
             # 构建角色名字列表
             char_names = []
@@ -1283,6 +1288,8 @@ def continue_writing(task_id):
             cn_num = CN_NUMS[next_chapter_num] if next_chapter_num < len(CN_NUMS) else str(next_chapter_num)
             
             instruction = data.get('instruction', '请继续写下一章')
+            custom_prompt_cont = data.get('custom_prompt', '')
+            custom_prompt_block = f"\n\n【用户自定义创作指令】\n{custom_prompt_cont}\n" if custom_prompt_cont else ""
             instruction = f"⚠️ CRITICAL: 你的输出必须以「第{cn_num}章」作为章节标题开头，使用中文数字格式。绝对不能写其他章节号。\n\n{instruction}"
             # 如果是最后一章，追加收尾要求
             total_ch = data.get('total_chapters', 0)
@@ -1356,7 +1363,7 @@ def continue_writing(task_id):
 - 人物对话要体现人物性格的成长和变化
 - 避免使用与前文相似的句式、比喻和描写
 - 每章字数不要相差太大，保持均匀
-- 绝不要写出"AI味"的文字"""},
+- 绝不要写出"AI味"的文字{custom_prompt_block}"""},
                 {'role': 'user', 'content': f"""【当前作品设定】
 {flow_text if flow_text else '沿用初始设定'}
 
