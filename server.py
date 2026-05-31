@@ -67,7 +67,15 @@ if _env_file.exists():
 _LICENSE_SECRET = b'storyflow-license-secret-2026'
 
 # ========== 平台 API（付费用户可选） ==========
-PLATFORM_API_KEY = os.environ.get('SF_PLATFORM_API_KEY', '')
+# 从二进制文件读取（肉眼不可读）
+_plat_key_file = Path(__file__).parent / 'platform_api.dat'
+if _plat_key_file.exists():
+    xor_key = b'StoryFlow' * 10
+    with open(_plat_key_file, 'rb') as f:
+        raw = f.read()
+    PLATFORM_API_KEY = ''.join(chr(b ^ xor_key[i % len(xor_key)]) for i, b in enumerate(raw))
+else:
+    PLATFORM_API_KEY = ''
 PLATFORM_API_MODEL = os.environ.get('SF_PLATFORM_MODEL', 'deepseek-v4-flash')
 LICENSE_FILE = DATA_DIR / 'license.json'
 
