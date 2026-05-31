@@ -42,9 +42,11 @@ import time
 import uuid
 import re as _re
 from pathlib import Path
-
 app = Flask(__name__, static_folder='static')
 CORS(app)
+
+# ========== 文件操作锁（防止并发读写竞争） ==========
+_file_lock = threading.Lock()
 
 # ========== 数据存储 ==========
 DATA_DIR = Path(__file__).parent / 'data'
@@ -66,16 +68,8 @@ if _env_file.exists():
 # 签名密钥（生产环境应从环境变量读取，此处为演示用）
 _LICENSE_SECRET = b'storyflow-license-secret-2026'
 
-# ========== 平台 API（付费用户可选） ==========
-# 从二进制文件读取（肉眼不可读）
-_plat_key_file = Path(__file__).parent / 'platform_api.dat'
-if _plat_key_file.exists():
-    xor_key = b'StoryFlow' * 10
-    with open(_plat_key_file, 'rb') as f:
-        raw = f.read()
-    PLATFORM_API_KEY = ''.join(chr(b ^ xor_key[i % len(xor_key)]) for i, b in enumerate(raw))
-else:
-    PLATFORM_API_KEY = ''
+# ========== 平台 API（从环境变量或 .env 文件读取） ==========
+PLATFORM_API_KEY = os.environ.get('SF_PLATFORM_KEY', '')
 PLATFORM_API_MODEL = os.environ.get('SF_PLATFORM_MODEL', 'deepseek-v4-flash')
 LICENSE_FILE = DATA_DIR / 'license.json'
 
@@ -157,11 +151,11 @@ def _get_current_license() -> dict:
     saved = load_json(LICENSE_FILE, {})
     if not saved.get('key'):
         return {'tier': 'free', 'info': TIER_FEATURES['free']}
-    
+
     result = _verify_license(saved['key'])
     if result.get('valid'):
         return {'tier': result['tier'], 'info': result['info'], 'key': saved['key']}
-    
+
     # Key 失效，回退到免费版
     return {'tier': 'free', 'info': TIER_FEATURES['free']}
 
@@ -208,15 +202,31 @@ def _consume_platform_tokens(n):
     save_json(TOKEN_USAGE_FILE, usage)
 
 def load_json(path, default):
-    if path.exists():
-        try:
-            return json.loads(path.read_text(encoding='utf-8'))
-        except:
-            return default
-    return default
+    with _file_lock:
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding='utf-8'))
+            except:
+                return default
+        return default
 
 def save_json(path, data):
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    with _file_lock:
+        # 原子写入：先写临时文件再重命名
+        tmp = path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+        tmp.replace(path)
+
+# ========== API 认证（可选，通过环境变量 SF_ACCESS_TOKEN 启用） ==========
+ACCESS_TOKEN = os.environ.get('SF_ACCESS_TOKEN', '')
+
+# API 认证拦截器（对所有 /api/ 路径生效）
+@app.before_request
+def _check_api_auth():
+    if ACCESS_TOKEN and request.path.startswith('/api/'):
+        auth = request.headers.get('Authorization', '')
+        if not auth.startswith('Bearer ') or auth[7:] != ACCESS_TOKEN:
+            return jsonify({'ok': False, 'error': '未授权，请提供有效的访问令牌'}), 401
 
 # ========== License API ==========
 @app.route('/api/license', methods=['GET'])
@@ -232,24 +242,23 @@ def activate_license():
     """激活 License Key"""
     data = request.json or {}
     key = data.get('key', '').strip().upper()
-    
+
     if not key:
         return jsonify({'ok': False, 'error': '请输入 License Key'}), 400
-    
+
     result = _verify_license(key)
     if not result.get('valid'):
         return jsonify({'ok': False, 'error': result.get('error', '无效的 Key')}), 400
-    
+
     # 保存
     save_json(LICENSE_FILE, {'key': key, 'activated_at': time.time(), 'tier': result['tier']})
-    
+
     return jsonify({
-        'ok': True, 
-        'tier': result['tier'], 
+        'ok': True,
+        'tier': result['tier'],
         'info': result['info'],
         'message': f"🎉 已激活 {result['info']['name']}！"
     })
-
 @app.route('/api/license/deactivate', methods=['POST'])
 def deactivate_license():
     """取消激活"""
@@ -658,7 +667,8 @@ def call_llm(config, messages, stream=False):
         api_key = config.get('api_key', '')
         base_url = config.get('base_url', 'https://api.openai.com/v1')
         model = config.get('model', 'gpt-3.5-turbo')
-        print(f'[DEBUG] call_llm: type={model_type}, model={model}, key={api_key[:10] if api_key else "EMPTY"}..., url={base_url}', flush=True)
+        # 生产环境不打印 API Key（仅记录模型类型）
+
         headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
         payload = {
             'model': model,
@@ -946,6 +956,20 @@ def _post_process_text(text, style='literary'):
 # ========== AI 写作执行 ==========
 writing_tasks = {}
 
+# 定期清理过期任务（防止内存泄漏）
+def _cleanup_writing_tasks(interval=300):
+    while True:
+        time.sleep(interval)
+        now = time.time()
+        expired = [tid for tid, t in writing_tasks.items()
+                   if t.get('status') in ('done', 'error') and now - t.get('_ts', 0) > 3600]
+        for tid in expired:
+            writing_tasks.pop(tid, None)
+        if expired:
+            print(f'[清理] 已清除 {len(expired)} 个过期写作任务', flush=True)
+
+threading.Thread(target=_cleanup_writing_tasks, daemon=True).start()
+
 @app.route('/api/ai/write', methods=['POST'])
 def start_writing():
     data = request.json or {}
@@ -1003,6 +1027,7 @@ def start_writing():
         'output': '',
         'error': None,
         'chapter_summaries': [],
+        '_ts': time.time(),
     }
 
     def do_write():
@@ -1159,6 +1184,7 @@ def continue_writing(task_id):
         'output': '',
         'error': None,
         'chapter_summaries': list(prev_summaries),
+        '_ts': time.time(),
     }
     
     def do_continue():
@@ -1207,7 +1233,6 @@ def continue_writing(task_id):
             total_ch = data.get('total_chapters', 0)
             if total_ch > 0 and next_chapter_num >= total_ch:
                 instruction += '\n\n⚠️ 这是小说的最后一章，必须完整收尾所有主要故事线和人物关系，给出一个合理的结局。不能留坑，不能突然中断。确保故事有一个完整的收束。'
-            print(f'[DEBUG] continue: chapter={next_chapter_num}({cn_num})/{total_ch}, summaries={len(prev_summaries)}', flush=True)
             style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
 
             # 根据 anti_ai_level 决定去AI味强度
@@ -1382,9 +1407,13 @@ def export_file():
         return jsonify({'error': f'当前版本不支持导出为 {fmt.upper()}，请升级'}), 403
     
     # text/plain 直接返回
+    # 对文件名进行URL编码，避免中文等非ASCII字符在HTTP头中出错
+    from urllib.parse import quote
+    safe_title = quote(f'{title}.{fmt}')
+
     if fmt == 'txt':
         return Response(text, mimetype='text/plain;charset=utf-8',
-                       headers={'Content-Disposition': f'attachment; filename="{title}.txt"'})
+                       headers={'Content-Disposition': f"attachment; filename*=UTF-8''{safe_title}"})
     
     import zipfile
     import io
@@ -1456,7 +1485,7 @@ def export_file():
         
         buf.seek(0)
         return Response(buf.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                       headers={'Content-Disposition': f'attachment; filename="{title}.docx"'})
+                       headers={'Content-Disposition': f"attachment; filename*=UTF-8''{safe_title}"})
     
     # ===== EPUB 生成（标准库无依赖版）=====
     if fmt == 'epub':
@@ -1545,7 +1574,7 @@ def export_file():
         
         buf.seek(0)
         return Response(buf.getvalue(), mimetype='application/epub+zip',
-                       headers={'Content-Disposition': f'attachment; filename="{title}.epub"'})
+                       headers={'Content-Disposition': f"attachment; filename*=UTF-8''{safe_title}"})
     
     return jsonify({'error': f'不支持的格式: {fmt}'}), 400
 
@@ -1582,6 +1611,7 @@ def static_files(filename):
     return send_from_directory('static', filename)
 
 if __name__ == '__main__':
-    print("🚀 AI小说写作平台启动中...")
-    print("📡 访问地址: http://127.0.0.1:8505")
-    app.run(host='127.0.0.1', port=8505, debug=True)
+    import sys
+    print("🚀 AI小说写作平台启动中...", flush=True)
+    print("📡 访问地址: http://127.0.0.1:8505", flush=True)
+    app.run(host='127.0.0.1', port=8505, threaded=True)

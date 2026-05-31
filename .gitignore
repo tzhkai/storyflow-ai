@@ -1,6 +1,5 @@
-# ========== 敏感/不应上传的文件 ==========
-# 放 generate_key.py, keys_*.txt 等
-scripts/
+# ========== 本地文件（不推送） ==========
+local/
 
 # 数据目录
 data/
@@ -37,7 +36,6 @@ license_core.so
 license_core.*.so
 *.lic
 *.dat
-!platform_api.dat
 .ai-*.json
 
 

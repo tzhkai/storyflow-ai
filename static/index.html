@@ -943,6 +943,7 @@
         <span id="ls-tier-name" style="font-weight:700;font-size:16px">免费版</span>
       </div>
       <div id="ls-tier-detail" style="font-size:12px;color:var(--text2);line-height:1.8"></div>
+
     </div>
 
     <!-- 三档对比 -->
@@ -1238,6 +1239,13 @@ const NODE_TYPES = [
   { type: 'setting_detail', name: '细节设定', icon: '⚙️', color: '#84cc16', desc: '丰富世界细节' },
   { type: 'custom',       name: '自定义节点', icon: '✏️', color: '#6b7280', desc: '自由输入设定', pro: true },
 ];
+
+// ========== HTML 转义（XSS 防护） ==========
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.appendChild(document.createTextNode(str));
+  return div.innerHTML;
+}
 
 // ========== 快速模板（一键套用整套配置） ==========
 const QUICK_TEMPLATES = [
@@ -1546,6 +1554,7 @@ function updateLicenseBadge() {
         : '';
       lsDetail.innerHTML = `流程图: ${f.max_flows === 999 ? '无限' : f.max_flows} | 导出: ${f.export_formats.join('/')}${tokenInfo}`;
     }
+
   }
   
   // 高亮当前 tier 卡片
@@ -1969,7 +1978,7 @@ const App = {
     if (proj && proj.output) {
       STATE.lastOutput = proj.output;
       STATE.currentTaskId = proj.task_id || null;
-      document.getElementById('ep-output').innerHTML = proj.output.replace(/\n/g, '<br>');
+      document.getElementById('ep-output').innerHTML = escapeHtml(proj.output).replace(/\n/g, '<br>');
       
       document.getElementById('ep-status-text').textContent = '已加载';
       document.getElementById('ep-dot').style.background = 'var(--green)';
@@ -2886,7 +2895,7 @@ async function startWriting() {
     pollWritingTask(data.task_id);
   } catch(e) {
     STATE._writing = false;
-    document.getElementById('ep-output').innerHTML = `<div style="color:var(--red);padding:20px">❌ 启动失败: ${e.message}</div>`;
+    document.getElementById('ep-output').innerHTML = `<div style="color:var(--red);padding:20px">❌ 启动失败: ${escapeHtml(e.message || '')}</div>`;
   }
 }
 
@@ -2919,7 +2928,7 @@ function pollWritingTask(taskId) {
       } else if (data.status === 'error') {
         STATE._writing = false;
         clearInterval(interval);
-        document.getElementById('ep-output').innerHTML = `<div style="color:var(--red);padding:20px">❌ 生成失败: ${data.error}</div>`;
+        document.getElementById('ep-output').innerHTML = `<div style="color:var(--red);padding:20px">❌ 生成失败: ${escapeHtml(data.error || '')}</div>`;
         document.getElementById('ep-status-text').textContent = '❌ 生成失败';
         document.getElementById('ep-dot').style.background = 'var(--red)';
       }
@@ -2931,11 +2940,12 @@ function pollWritingTask(taskId) {
 }
 
 function displayOutput(text) {
-  // 简单的 markdown 渲染
-  const html = text
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+  // XSS 防护：先转义 HTML 再渲染 Markdown
+  const escaped = escapeHtml(text);
+  const html = escaped
     .replace(/^### (.+)$/gm, '<div class="chapter-title">$1</div>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n\n/g, '</p><p style="margin:8px 0">')
     .replace(/\n/g, '<br>');
@@ -3401,11 +3411,11 @@ async function testModelConnection() {
         }
       }
     } else {
-      resultArea.innerHTML = `<div class="test-result fail">❌ 连接失败：${data.error}</div>`;
+      resultArea.innerHTML = `<div class="test-result fail">❌ 连接失败：${escapeHtml(data.error || '')}</div>`;
     }
   } catch(e) {
     STATE._writing = false;
-    resultArea.innerHTML = `<div class="test-result fail">❌ 请求失败：${e.message}</div>`;
+    resultArea.innerHTML = `<div class="test-result fail">❌ 请求失败：${escapeHtml(e.message || '')}</div>`;
   }
 }
 
@@ -3448,6 +3458,7 @@ function saveModelConfig() {
   
   STATE.modelType = type;
   STATE.modelConfig = config;
+  // 将 API Key 存储在 localStorage（自部署环境安全可控）
   localStorage.setItem('sf_model_config', JSON.stringify(config));
   localStorage.setItem('sf_model_type', type);
   
