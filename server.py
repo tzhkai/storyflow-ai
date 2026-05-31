@@ -30,7 +30,7 @@ if _missing:
     sys.exit(1)
 
 # ========== 正式导入 ==========
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 import json
 import os
@@ -1064,6 +1064,7 @@ def start_writing():
 【核心冲突】{conflict.get('name', '')}：{conflict.get('desc', '')}
 【写作风格】{style.get('name', '')}：{style.get('desc', '')}
 【章节规划】{chapter.get('name', '')}：{chapter.get('desc', '')}
+【字数设定】每章约{flow_config.get('chapter', {}).get('word_count', 2500)}字，共{flow_config.get('chapter', {}).get('chapter_count', 30)}章
 【叙事视角】{pov.get('name', '')}：{pov.get('desc', '')}
 【细节设定】{setting_detail.get('name', '')}：{setting_detail.get('desc', '')}
 【补充说明】{custom_notes}
@@ -1176,7 +1177,7 @@ def continue_writing(task_id):
 
             writing_tasks[task_id_new]['status'] = 'running'
             prev_content = data.get('prev_content', '')
-            next_chapter_num = len(prev_summaries) + 1
+            next_chapter_num = data.get('chapter_num', len(prev_summaries) + 1)
             # 中文数字映射
             CN_NUMS = ['零','一','二','三','四','五','六','七','八','九','十',
                        '十一','十二','十三','十四','十五','十六','十七','十八','十九','二十']
@@ -1217,6 +1218,24 @@ def continue_writing(task_id):
 4. 如果感觉情节陷入循环，引入新的冲突元素或外部事件打破僵局
 5. 新章节的每一段文字都要向前推进故事，不能原地打转"""
 
+            # 读取最新流程设定（允许用户修改后生效）
+            flow_config = data.get('flow', {})
+            flow_parts = []
+            wc_keys = [('genre','体裁'),('world','世界观'),('protagonist','主角'),('outline','大纲'),('conflict','冲突'),('style','风格'),('pov','视角'),('setting_detail','细节'),('romance','情感'),('characters','角色')]
+            for key, label in wc_keys:
+                sel = flow_config.get(key, {}).get('selected', {})
+                if sel and sel.get('name'):
+                    flow_parts.append(f"【{label}】{sel['name']}：{sel.get('desc','')}")
+            # 章节字数
+            chap_cfg = flow_config.get('chapter', {})
+            chap_sel = chap_cfg.get('selected', {})
+            if chap_sel and chap_sel.get('name'):
+                flow_parts.append(f"【章节】{chap_sel['name']}：{chap_sel.get('desc','')}")
+            wc = chap_cfg.get('word_count', 2500)
+            cc = chap_cfg.get('chapter_count', 30)
+            flow_parts.append(f"【字数】每章约{wc}字，共{cc}章")
+            flow_text = '\n'.join(flow_parts) if flow_parts else ''
+
             messages = [
                 {'role': 'system', 'content': f"""你是专业小说作者。请根据已有摘要继续创作。
 
@@ -1231,7 +1250,10 @@ def continue_writing(task_id):
 - 人物对话要体现人物性格的成长和变化
 - 避免使用与前文相似的句式、比喻和描写
 - 绝不要写出"AI味"的文字"""},
-                {'role': 'user', 'content': f"""【已写章节摘要】
+                {'role': 'user', 'content': f"""【当前作品设定】
+{flow_text if flow_text else '沿用初始设定'}
+
+【已写章节摘要】
 {summary_text}
 
 【上一章结尾】
@@ -1310,6 +1332,193 @@ def export_content():
     return jsonify({'ok': True, 'format': format})
 
 # ========== 静态文件 ==========
+@app.route('/api/export2', methods=['POST'])
+def export_file():
+    data = request.json
+    text = data.get('text', '')
+    fmt = data.get('format', 'txt')
+    title = data.get('title', '小说')
+    
+    if not text.strip():
+        return jsonify({'error': '内容为空'}), 400
+    
+    # License 验证
+    lic = _get_current_license()
+    allowed = lic['info'].get('export_formats', ['txt'])
+    if fmt not in allowed:
+        return jsonify({'error': f'当前版本不支持导出为 {fmt.upper()}，请升级'}), 403
+    
+    # text/plain 直接返回
+    if fmt == 'txt':
+        return Response(text, mimetype='text/plain;charset=utf-8',
+                       headers={'Content-Disposition': f'attachment; filename="{title}.txt"'})
+    
+    import zipfile
+    import io
+    
+    buf = io.BytesIO()
+    
+    # ===== DOCX 生成（标准库无依赖版）=====
+    if fmt == 'docx':
+        paragraphs = text.strip().split('\n')
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+            # [Content_Types].xml
+            z.writestr('[Content_Types].xml', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+</Types>''')
+            # _rels/.rels
+            z.writestr('_rels/.rels', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>''')
+            # word/_rels/document.xml.rels
+            z.writestr('word/_rels/document.xml.rels', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>''')
+            # word/styles.xml
+            z.writestr('word/styles.xml', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+    <w:pPr><w:spacing w:line="360" w:lineRule="auto"/></w:pPr>
+    <w:rPr><w:sz w:val="24"/><w:rFonts w:eastAsia="SimSun"/></w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Title">
+    <w:name w:val="Title"/>
+    <w:basedOn w:val="Normal"/>
+    <w:pPr><w:jc w:val="center"/></w:pPr>
+    <w:rPr><w:b/><w:sz w:val="36"/></w:rPr>
+  </w:style>
+</w:styles>''')
+            # word/document.xml
+            xml_parts = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
+                '<w:body>']
+            # 标题
+            xml_parts.append(
+                f'<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t xml:space="preserve">{_escape_xml(title)}</w:t></w:r></w:p>')
+            # 空行
+            xml_parts.append('<w:p><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>')
+            # 正文段落
+            for para in paragraphs:
+                para = para.strip()
+                if not para:
+                    xml_parts.append('<w:p><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>')
+                elif para.startswith('## '):
+                    xml_parts.append(
+                        f'<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t xml:space="preserve">{_escape_xml(para[3:])}</w:t></w:r></w:p>')
+                elif para.startswith('# '):
+                    xml_parts.append(
+                        f'<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t xml:space="preserve">{_escape_xml(para[2:])}</w:t></w:r></w:p>')
+                else:
+                    xml_parts.append(
+                        f'<w:p><w:r><w:t xml:space="preserve">{_escape_xml(para)}</w:t></w:r></w:p>')
+            xml_parts.append('</w:body></w:document>')
+            z.writestr('word/document.xml', ''.join(xml_parts))
+        
+        buf.seek(0)
+        return Response(buf.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                       headers={'Content-Disposition': f'attachment; filename="{title}.docx"'})
+    
+    # ===== EPUB 生成（标准库无依赖版）=====
+    if fmt == 'epub':
+        from datetime import datetime
+        now_str = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+        
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+            # mimetype 必须第一个且不压缩
+            z.writestr('mimetype', 'application/epub+zip', compress_type=zipfile.ZIP_STORED)
+            # META-INF/container.xml
+            z.writestr('META-INF/container.xml', '''<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>''')
+            # 内容解析
+            chapters = []
+            current_section = ''
+            current_content = []
+            for line in text.split('\n'):
+                if line.startswith('## '):
+                    if current_section:
+                        chapters.append((current_section, '\n'.join(current_content)))
+                    current_section = line[3:].strip()
+                    current_content = []
+                elif line.startswith('# '):
+                    if current_section:
+                        chapters.append((current_section, '\n'.join(current_content)))
+                    current_section = line[2:].strip()
+                    current_content = []
+                else:
+                    current_content.append(line)
+            if current_section:
+                chapters.append((current_section, '\n'.join(current_content)))
+            
+            if not chapters:
+                chapters = [('正文', text)]
+            
+            # 生成章节 XHTML
+            chapter_files = []
+            for i, (sec_title, sec_content) in enumerate(chapters):
+                fn = f'chapter_{i+1:03d}.xhtml'
+                chapter_files.append((fn, sec_title))
+                html_body = ''.join(
+                    f'<p>{_escape_xml(line)}</p>' if line.strip() else '<p>&nbsp;</p>'
+                    for line in sec_content.split('\n')
+                )
+                z.writestr(f'OEBPS/{fn}', f'''<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>{_escape_xml(sec_title)}</title></head>
+<body>
+<h1>{_escape_xml(sec_title)}</h1>
+{html_body}
+</body>
+</html>''')
+            
+            # content.opf
+            manifest = '\n'.join(f'<item id="ch{i+1}" href="{fn}" media-type="application/xhtml+xml"/>'
+                               for i, (fn, _) in enumerate(chapter_files))
+            spine = '\n'.join(f'<itemref idref="ch{i+1}"/>'
+                            for i in range(len(chapter_files)))
+            z.writestr('OEBPS/content.opf', f'''<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="BookId">
+  <metadata>
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">{_escape_xml(title)}</dc:title>
+    <dc:language xmlns:dc="http://purl.org/dc/elements/1.1/">zh-CN</dc:language>
+    <dc:date xmlns:dc="http://purl.org/dc/elements/1.1/">{now_str}</dc:date>
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+{manifest}
+  </manifest>
+  <spine toc="ncx">
+{spine}
+  </spine>
+</package>''')
+            # toc.ncx
+            nav_points = '\n'.join(
+                f'<navPoint id="nav{i+1}" playOrder="{i+1}"><navLabel><text>{_escape_xml(st)}</text></navLabel><content src="{fn}"/></navPoint>'
+                for i, (fn, st) in enumerate(chapter_files))
+            z.writestr('OEBPS/toc.ncx', f'''<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head><meta name="dtb:uid" content="storyflow-{int(time.time())}"/></head>
+  <docTitle><text>{_escape_xml(title)}</text></docTitle>
+  <navMap>{nav_points}</navMap>
+</ncx>''')
+        
+        buf.seek(0)
+        return Response(buf.getvalue(), mimetype='application/epub+zip',
+                       headers={'Content-Disposition': f'attachment; filename="{title}.epub"'})
+    
+    return jsonify({'error': f'不支持的格式: {fmt}'}), 400
+
+def _escape_xml(s):
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
 @app.route('/')
 def index():
     lic = _get_current_license()

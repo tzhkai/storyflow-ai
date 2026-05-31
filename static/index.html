@@ -796,19 +796,16 @@
     <div class="logo">✦ StoryFlow</div>
   </div>
   <div class="sep"></div>
-  <input id="project-name-input" type="text" value="新小说项目" placeholder="项目名称">
+  <input id="project-name-input" type="text" value="新小说项目" placeholder="项目名称" oninput="document.getElementById('current-project-name').textContent=this.value||'新小说项目'">
   <div class="sep"></div>
 
   <div id="project-dropdown" style="position:relative">
-    <div id="project-trigger" onclick="toggleProjectList()" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 10px;border-radius:6px;background:var(--bg2);font-size:13px">
-      📁 <span id="current-project-name">我的项目</span> ▾
+    <div id="project-trigger" onclick="toggleProjectList()" style="display:flex;align-items:center;cursor:pointer;padding:4px 10px;border-radius:6px;background:var(--bg2);border:1px solid var(--border);font-size:13px;min-width:240px">
+      <span id="current-project-name">📁 我的项目</span>
+      <span style="margin-left:auto">▾</span>
     </div>
-    <div id="project-list" class="dropdown-menu" style="display:none;position:absolute;top:100%;right:0;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:240px;max-height:300px;overflow-y:auto;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,0.2)">
+    <div id="project-list" class="dropdown-menu" style="display:none;position:absolute;top:100%;left:0;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:240px;width:100%;max-height:300px;overflow-y:auto;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,0.2)">
       <div id="project-list-items"></div>
-      <div style="border-top:1px solid var(--border);margin-top:4px;padding:8px 10px">
-        <input id="project-rename-input" placeholder="新建项目名称" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;font-size:12px" 
-               onkeydown="if(event.key==='Enter'){App.newProject()}">
-      </div>
     </div>
   </div>
 
@@ -922,10 +919,9 @@
       </select>
     </div>
     <div class="spacer"></div>
-    <button class="btn btn-primary" onclick="startWriting()" style="flex:1" id="btn-start-write">▶ 开始</button>
-    <button class="btn btn-secondary" onclick="continueWriting()" id="btn-continue" style="display:none">⟳ 继续下一章</button>
-    <button class="btn btn-secondary" onclick="copyOutput()">📋 复制</button>
-    <button class="btn btn-secondary" onclick="exportOutput()">💾 导出</button>
+    <button class="btn btn-primary" onclick="handleWrite()" style="flex:3;font-size:12px;white-space:nowrap" id="btn-start-write">✍️ 开始写作</button>
+    <button class="btn btn-secondary" onclick="copyOutput()" style="font-size:12px;white-space:nowrap">📋 复制</button>
+    <button class="btn btn-secondary" onclick="exportOutput()" style="font-size:12px;white-space:nowrap">💾 导出</button>
   </div>
 </div>
 
@@ -1223,6 +1219,7 @@ const STATE = {
   currentProjectId: null,
   license: { tier: 'free', features: null },
   usePlatformApi: localStorage.getItem('sf_use_platform_api') === 'true',
+  chapterCount: 0,
 };
 
 // 节点类型定义
@@ -1317,6 +1314,15 @@ function applyTemplate(tid) {
   STATE.nodes = {};
   STATE.edges = [];
   
+  // 重置写作状态
+  STATE.lastOutput = '';
+  STATE.currentTaskId = null;
+  STATE.chapterCount = 0;
+  document.getElementById('ep-output').innerHTML = `<div style="color:var(--text3);text-align:center;padding:40px;font-size:14px;"><div style="font-size:48px;margin-bottom:16px">📖</div>点击「开始写作」后，AI将根据你的设定开始创作...</div>`;
+  document.getElementById('ep-status-text').textContent = '就绪';
+  document.getElementById('ep-dot').style.background = 'var(--text3)';
+  updateWriteBtn();
+  
   // 节点层级与布局
   const LAYERS = {
     parallel: ['characters', 'setting_detail'],
@@ -1404,6 +1410,23 @@ function applyTemplate(tid) {
       };
       STATE.nodes[id].char_name = NAME_MAP[node.selected.name] || '叶辰';
       STATE.nodes[id].char_role = '主角';
+    }
+    // 章节节点默认字数
+    if (node.type === 'chapter' && node.selected) {
+      const CHAP_DEFAULTS = { 'ch1': [2500,8], 'ch2': [3000,30], 'ch3': [2500,100], 'ch4': [3000,60], 'ch5': [2500,40] };
+      const d = CHAP_DEFAULTS[node.selected.id];
+      if (d) { STATE.nodes[id].word_count = d[0]; STATE.nodes[id].chapter_count = d[1]; }
+    }
+    // 角色节点默认名字（按预设区分）
+    if (node.type === 'characters' && node.selected) {
+      const CHAR_MAP = {
+        '导师/师傅型': ['玄清真人','师傅'], '挚友/搭档型': ['林峰','兄弟'],
+        '宿敌/反派型': ['夜无痕','反派'], '恋人/感情线型': ['陆雪琪','恋人'],
+        '搞笑担当型': ['王小乐','活宝'], '神秘人/幕后型': ['影','神秘人'],
+        '团队伙伴型': ['周瑶','队友'], '引路NPC型': ['老张','引路人'],
+      };
+      const d = CHAR_MAP[node.selected.name];
+      if (d) { STATE.nodes[id].char_name = d[0]; STATE.nodes[id].char_role = d[1]; }
     }
   }
   
@@ -1788,6 +1811,10 @@ const App = {
     if (!def) return;
     const id = 'node_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
     const node = { id, type, x, y, selected: null, custom_text: '' };
+    // 默认值
+    if (type === 'chapter') { node.word_count = 2500; node.chapter_count = 30; }
+    if (type === 'protagonist') { node.char_name = '叶辰'; node.char_role = '主角'; }
+    if (type === 'characters') { node.char_name = '苏雨晴'; node.char_role = '伙伴'; }
     STATE.nodes[id] = node;
     renderNode(node, def);
     updateEmpty();
@@ -1827,7 +1854,8 @@ const App = {
   },
 
   async saveProject() {
-    const name = document.getElementById('project-rename-input').value || document.getElementById('current-project-name').textContent || '我的项目';
+    const name = document.getElementById('project-name-input').value || '我的项目';
+    document.getElementById('current-project-name').textContent = name;
     const flowConfig = buildFlowConfig();
     const data = {
       name,
@@ -1864,6 +1892,7 @@ const App = {
       const proj = await r.json();
       STATE.currentProjectId = id;
       document.getElementById('project-name-input').value = proj.name;
+      document.getElementById('current-project-name').textContent = proj.name;
       
       // 清空画布
       Object.keys(STATE.nodes).forEach(id => document.getElementById(id)?.remove());
@@ -1881,6 +1910,19 @@ const App = {
       updateEmpty();
       updateFlowIndicator();
       renderProjectList();
+      
+      // 恢复写作状态
+      STATE.lastOutput = proj.output || '';
+      STATE.currentTaskId = proj.task_id || '';
+      // 计算已写章节数（按"第x章"标题匹配）
+      const chapterMatches = (STATE.lastOutput || '').match(/第[零一二三四五六七八九十百千\d]+章/g);
+      STATE.chapterCount = chapterMatches ? chapterMatches.length : 0;
+      if (STATE.lastOutput) {
+        displayOutput(STATE.lastOutput);
+        updateWriteBtn();
+      }
+      openExecutePanel();
+      
       toast('📂 项目已加载');
     } catch(e) { toast('❌ 加载失败'); }
   },
@@ -1888,7 +1930,7 @@ const App = {
   async saveProjectQuiet() {
     // 静默保存，不弹 toast
     if (!STATE.lastOutput) return;
-    const name = document.getElementById('current-project-name').textContent || '我的项目';
+    const name = document.getElementById('project-name-input').value || '我的项目';
     const data = {
       name,
       nodes: Object.values(STATE.nodes),
@@ -1914,19 +1956,6 @@ const App = {
     } catch(e) {}
   },
 
-  newProject() {
-    const nameInput = document.getElementById('project-rename-input');
-    const name = nameInput.value.trim() || '我的项目';
-    nameInput.value = '';
-    STATE.currentProjectId = null;
-    App.clearCanvas();
-    document.getElementById('current-project-name').textContent = name;
-    STATE.lastOutput = '';
-    STATE.currentTaskId = null;
-    renderProjectList();
-    closeProjectList();
-  },
-
   resumeWriting(projectId) {
     App.loadProject(projectId);
     const proj = STATE.projects.find(p => p.id === projectId);
@@ -1934,7 +1963,7 @@ const App = {
       STATE.lastOutput = proj.output;
       STATE.currentTaskId = proj.task_id || null;
       document.getElementById('ep-output').innerHTML = proj.output.replace(/\n/g, '<br>');
-      document.getElementById('btn-continue').style.display = 'flex';
+      
       document.getElementById('ep-status-text').textContent = '已加载';
       document.getElementById('ep-dot').style.background = 'var(--green)';
     }
@@ -2774,6 +2803,15 @@ function closeExecutePanel() {
   document.getElementById('execute-panel').classList.remove('show');
 }
 
+// 统一的写作按钮：首次=开始，之后=续写
+function handleWrite() {
+  if (STATE.chapterCount === 0) {
+    startWriting();
+  } else {
+    continueWriting();
+  }
+}
+
 async function startWriting() {
   if (!STATE.modelType) {
     toast('⚠️ 请先配置AI模型');
@@ -2794,7 +2832,7 @@ async function startWriting() {
   document.getElementById('ep-progress-bar').style.width = '0%';
   document.getElementById('ep-status-text').textContent = '正在生成...';
   document.getElementById('ep-dot').style.background = 'var(--orange)';
-  document.getElementById('btn-continue').style.display = 'none';
+  
   
   try {
     const r = await fetch('/api/ai/write', {
@@ -2842,10 +2880,12 @@ function pollWritingTask(taskId) {
         clearInterval(interval);
         STATE.lastOutput = data.output;
         displayOutput(data.output);
+        STATE.chapterCount = 1;
+        updateWriteBtn();
         
         document.getElementById('ep-status-text').textContent = '✅ 生成完成';
         document.getElementById('ep-dot').style.background = 'var(--green)';
-        document.getElementById('btn-continue').style.display = 'flex';
+        
         App.saveProjectQuiet();  // 自动保存
       } else if (data.status === 'error') {
         clearInterval(interval);
@@ -2961,12 +3001,26 @@ function showRepetitionWarning(segmentRepeats, phraseRepeat) {
   warnEl.style.display = 'flex';
 }
 
+function updateWriteBtn() {
+  const btn = document.getElementById('btn-start-write');
+  if (STATE.chapterCount === 0) {
+    btn.textContent = '✍️ 开始写作';
+    btn.className = 'btn btn-primary';
+  } else {
+    const next = STATE.chapterCount + 1;
+    const CN = ['零','一','二','三','四','五','六','七','八','九','十','十一','十二','十三','十四','十五','十六','十七','十八','十九','二十'];
+    const label = next < CN.length ? CN[next] : next;
+    btn.textContent = `✍️ 第${label}章`;
+    btn.className = 'btn btn-green';
+  }
+}
+
 async function continueWriting() {
   if (!STATE.lastOutput) return;
   
   document.getElementById('ep-status-text').textContent = '正在续写...';
   document.getElementById('ep-dot').style.background = 'var(--orange)';
-  document.getElementById('btn-continue').style.display = 'none';
+  
   
   try {
     const r = await fetch(`/api/ai/write/${STATE.currentTaskId}/continue`, {
@@ -2974,6 +3028,8 @@ async function continueWriting() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prev_content: STATE.lastOutput,
+        flow: buildFlowConfig(),
+        chapter_num: STATE.chapterCount + 1,
         instruction: '请继续写下一章，保持风格一致',
         model_config: { type: STATE.modelType, ...STATE.modelConfig },
         writing_style: document.getElementById('writing-style-select').value,
@@ -2985,7 +3041,7 @@ async function continueWriting() {
       toast('🔒 续写请求被拒绝');
       document.getElementById('ep-status-text').textContent = '请求被拒绝';
       document.getElementById('ep-dot').style.background = 'var(--red)';
-      document.getElementById('btn-continue').style.display = 'flex';
+      
       return;
     }
     
@@ -2994,7 +3050,7 @@ async function continueWriting() {
     pollContinueTask(data.task_id);
   } catch(e) {
     toast('续写失败: ' + e.message);
-    document.getElementById('btn-continue').style.display = 'flex';
+    
   }
 }
 
@@ -3006,17 +3062,19 @@ function pollContinueTask(taskId) {
       clearInterval(interval);
       STATE.lastOutput += '\n\n' + data.output;
       displayOutput(STATE.lastOutput);
+      STATE.chapterCount++;
+      updateWriteBtn();
       
       document.getElementById('ep-status-text').textContent = '✅ 续写完成';
       document.getElementById('ep-dot').style.background = 'var(--green)';
-      document.getElementById('btn-continue').style.display = 'flex';
+      
       App.saveProjectQuiet();
     } else if (data.status === 'error') {
       clearInterval(interval);
       toast('❌ 续写失败: ' + data.error);
       document.getElementById('ep-status-text').textContent = '续写失败';
       document.getElementById('ep-dot').style.background = 'var(--red)';
-      document.getElementById('btn-continue').style.display = 'flex';
+      
     }
   }, 1000);
 }
@@ -3033,42 +3091,63 @@ async function exportOutput() {
   const features = STATE.license.features;
   const formats = features ? features.export_formats : ['txt'];
 
-  // 付费版：弹出格式选择，并后端验证
-  if (formats.length <= 1) {
-    // 免费版只有 txt，直接导出（后端也会验证）
-    const ok = await verifyExportFormat('txt');
-    if (!ok) return;
-    downloadText(text, name, 'txt');
-    return;
+  // 付费版：弹出格式选择
+  let fmt = 'txt';
+  if (formats.length > 1) {
+    const fmtInput = prompt(
+      `可选导出格式: ${formats.join('/')}\n请输入格式 (${formats.join('/')}):`,
+      formats[0]
+    );
+    if (!fmtInput) return;
+    fmt = fmtInput.toLowerCase();
+    if (!formats.includes(fmt)) {
+      toast(`❌ 当前版本不支持导出为 ${fmt.toUpperCase()}，请升级`);
+      return;
+    }
   }
 
-  // 付费版：让用户选择格式
-  const fmtInput = prompt(
-    `可选导出格式: ${formats.join('/')}\n请输入格式 (${formats.join('/')}):`,
-    formats[0]
-  );
-  if (!fmtInput) return;
-  const fmt = fmtInput.toLowerCase();
-
-  if (!formats.includes(fmt)) {
-    toast(`❌ 当前版本不支持导出为 ${fmt.toUpperCase()}，请升级`);
-    return;
-  }
-
-  // 后端强制验证（防前端绕过）
+  // 后端验证
   const ok = await verifyExportFormat(fmt);
   if (!ok) return;
 
+  // PDF 走浏览器打印
   if (fmt === 'pdf') {
     const printWin = window.open('', '_blank');
     printWin.document.write(`<html><head><title>${name}</title><style>body{font-family:sans-serif;line-height:1.8;padding:40px;max-width:700px;margin:auto}h1{text-align:center}</style></head><body><h1>${name}</h1>${document.getElementById('ep-output').innerHTML}</body></html>`);
     printWin.document.close();
     printWin.print();
     toast('📄 已打开打印/另存为PDF');
-  } else if (fmt === 'epub') {
-    toast('📖 EPUB 导出功能即将上线，敬请期待！');
-  } else {
-    downloadText(text, name, fmt);
+    return;
+  }
+
+  // TXT 直接下载
+  if (fmt === 'txt') {
+    downloadText(text, name, 'txt');
+    return;
+  }
+
+  // DOCX/EPUB 后端生成
+  try {
+    const resp = await fetch('/api/export2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, format: fmt, title: name })
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      toast('❌ 导出失败: ' + (err.error || resp.statusText));
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.${fmt}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`✅ ${fmt.toUpperCase()} 已下载`);
+  } catch(e) {
+    toast('❌ 导出失败: ' + e.message);
   }
 }
 
