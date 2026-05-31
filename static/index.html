@@ -786,6 +786,23 @@
   }
   .ct-item:hover .ct-del { visibility: visible; }
   .ct-item .ct-del:hover { background: rgba(239,68,68,0.2); color: var(--red); }
+
+  /* ============ 响应式布局 ============ */
+  @media (max-width: 1200px) {
+    #right-panel { width: 280px; }
+    #main-content { grid-template-columns: 200px 1fr; }
+  }
+  @media (max-width: 900px) {
+    #right-panel { width: 240px; }
+    #main-content { grid-template-columns: 180px 1fr; }
+    #topbar .controls { gap: 4px; }
+    #topbar .controls button { padding: 6px 10px; font-size: 12px; }
+  }
+  @media (max-width: 700px) {
+    #left-panel { width: 120px; font-size: 12px; }
+    #right-panel { display: none; }
+    #main-content { grid-template-columns: 120px 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -1253,7 +1270,7 @@ const QUICK_TEMPLATES = [
   { id:'t_wuxia', name:'武侠江湖', icon:'⚔️', pro:false, flow:{genre:'wuxia',world:'w6',protagonist:'p1',outline:'o6',conflict:'c3',style:'s4',chapter:'ch3',pov:'pov2',setting_detail:'sd2',characters:'cr3'} },
   { id:'t_scifi', name:'科幻星际', icon:'🚀', pro:false, flow:{genre:'scifi',world:'w3',protagonist:'p3',outline:'o10',conflict:'c8',style:'s1',chapter:'ch4',pov:'pov3',setting_detail:'sd5',characters:'cr7'} },
   { id:'t_urban', name:'都市异能', icon:'🏙️', pro:true, flow:{genre:'都市',world:'w4',protagonist:'p6',outline:'o7',conflict:'c4',style:'s1',chapter:'ch3',pov:'pov2',setting_detail:'sd4',characters:'cr6'} },
-  { id:'t_romance_modern', name:'甜宠言情', icon:'💝', pro:false, flow:{genre:'romance',world:'w4',protagonist:'p8',outline:'o8',conflict:'c7',style:'s8',chapter:'ch2',pov:'pov2',setting_detail:'sd4',characters:'cr4',romance:'heal_love'} },
+  { id:'t_romance_modern', name:'甜宠言情', icon:'💝', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p8',outline:'o8',conflict:'c7',style:'s8',chapter:'ch2',pov:'pov2',setting_detail:'sd4',characters:'cr4',romance:'heal_love'} },
   { id:'t_horror', name:'悬疑推理', icon:'🔍', pro:false, flow:{genre:'horror',world:'w5',protagonist:'p5',outline:'o4',conflict:'c5',style:'s5',chapter:'ch2',pov:'pov4',setting_detail:'sd5',characters:'cr6'} },
   { id:'t_apocalypse', name:'末世求生', icon:'🧟', pro:false, flow:{genre:'apocalypse',world:'w5',protagonist:'p1',outline:'o9',conflict:'c8',style:'s1',chapter:'ch3',pov:'pov2',setting_detail:'sd2',characters:'cr7'} },
   { id:'t_campus', name:'青春校园', icon:'🎒', pro:true, flow:{genre:'campus',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',style:'s6',chapter:'ch2',pov:'pov1',setting_detail:'sd4',characters:'cr2'} },
@@ -1332,76 +1349,89 @@ function applyTemplate(tid) {
   document.getElementById('ep-dot').style.background = 'var(--text3)';
   updateWriteBtn();
   
-  // 节点层级与布局
-  const LAYERS = {
-    parallel: ['characters', 'setting_detail'],
-    main: ['genre', 'world', 'protagonist', 'outline', 'conflict'],
-    sub: ['romance'],
-    modifier: ['style', 'pov', 'chapter'],
-  };
-  const NODE_W = 240, GAP = 80;
   const positions = [];
-  
+
   // 找到所有预填的节点类型
   const matchedTypes = [];
-  for (const layer of ['parallel', 'main', 'sub', 'modifier']) {
-    for (const nodeType of LAYERS[layer]) {
-      const presetId = t.flow[nodeType];
-      if (!presetId) continue;
-      const cat = STATE.presets[nodeType];
-      if (!cat) continue;
-      const preset = cat.presets.find(p => p.id === presetId);
-      if (!preset) continue;
-      matchedTypes.push({ nodeType, preset, layer });
+  for (const nodeType of ['genre','world','protagonist','outline','conflict','romance','characters','setting_detail','style','pov','chapter']) {
+    const presetId = t.flow[nodeType];
+    if (!presetId) continue;
+    const cat = STATE.presets[nodeType];
+    if (!cat) continue;
+    const preset = cat.presets.find(p => p.id === presetId);
+    if (!preset) continue;
+    matchedTypes.push({ nodeType, preset });
+  }
+
+  // ========== 节点布局（树形层级，清晰美观） ==========
+  const NODE_W = 240, GAP = 120;
+  const mainOrder = ['genre', 'world', 'protagonist', 'outline', 'conflict'];
+  const mainX = {};
+  mainOrder.forEach((type, i) => { mainX[type] = 50 + i * (NODE_W + GAP); });
+
+  const LAYERS = [
+    { name: 'top',    y: 80,  items: ['romance','characters','setting_detail'],
+      anchor: { romance: 'genre', characters: 'protagonist', setting_detail: 'world' } },
+    { name: 'main',   y: 260, items: mainOrder, anchor: {} },
+    { name: 'bottom', y: 440, items: ['style','pov','chapter'],
+      anchor: { style: 'genre', pov: 'protagonist', chapter: 'outline' } },
+  ];
+
+  const layerNodes = { top: [], main: [], bottom: [] };
+  for (const item of matchedTypes) {
+    for (const layer of LAYERS) {
+      if (layer.items.includes(item.nodeType)) {
+        layerNodes[layer.name].push(item);
+        break;
+      }
     }
   }
-  
-  // 按层分布：并行在上，主链居中一行，情感关系在主力下方，修饰在最下
-  const layerStartY = { parallel: 60, main: 280, sub: 500, modifier: 680 };
-  
-  for (const layer of ['parallel', 'main', 'sub', 'modifier']) {
-    const items = matchedTypes.filter(m => m.layer === layer);
-    if (items.length === 0) continue;
-    
-    // 主链一行展开，其他居中对齐
-    const totalW = items.length * NODE_W + (items.length - 1) * GAP;
-    const startX = layer === 'main' ? 50 : Math.max(50, (800 - totalW) / 2);
-    
-    items.forEach((item, i) => {
-      const x = startX + i * (NODE_W + GAP);
-      const y = layerStartY[layer];
+
+  // 放置节点
+  for (const layer of LAYERS) {
+    for (const item of layerNodes[layer.name]) {
+      let x;
+      if (layer.anchor[item.nodeType]) {
+        x = mainX[layer.anchor[item.nodeType]];
+        const sameAnchor = layerNodes[layer.name].filter(
+          n => n.nodeType !== item.nodeType && layer.anchor[n.nodeType] === layer.anchor[item.nodeType]
+        );
+        if (sameAnchor.length > 0) {
+          const idx = sameAnchor.filter(n => n.nodeType < item.nodeType).length + 1;
+          x += (idx - (sameAnchor.length) / 2) * (NODE_W + 40);
+        }
+      } else {
+        x = mainX[item.nodeType];
+      }
       const id = 'node_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
-      STATE.nodes[id] = { id, type: item.nodeType, x, y, selected: item.preset, custom_text: '' };
-      positions.push({ id, nodeType: item.nodeType, layer, index: i });
-    });
+      STATE.nodes[id] = { id, type: item.nodeType, x, y: layer.y, selected: item.preset, custom_text: '' };
+      positions.push({ id, nodeType: item.nodeType, layer: layer.name });
+    }
   }
-  
-  // 主链连线：体裁→世界观→主角→大纲→冲突
-  const mainNodes = positions.filter(p => p.layer === 'main');
-  for (let i = 1; i < mainNodes.length; i++) {
-    STATE.edges.push({ from: mainNodes[i-1].id, to: mainNodes[i].id });
+
+  // 主链连线
+  const mainIds = mainOrder.map(type => {
+    const p = positions.find(p => p.nodeType === type);
+    return p ? p.id : null;
+  }).filter(Boolean);
+  for (let i = 1; i < mainIds.length; i++) {
+    STATE.edges.push({ from: mainIds[i-1], to: mainIds[i] });
   }
-  
-  // 查主链节点
-  const m = (type) => { const x = mainNodes.find(p => p.nodeType === type); return x ? x.id : null; };
-  
-  // 并行→主链：角色设定→主角，细节设定→世界观
-  for (const pn of positions.filter(p => p.layer === 'parallel')) {
-    const tid = m(pn.nodeType === 'characters' ? 'protagonist' : 'world');
-    if (tid) STATE.edges.push({ from: pn.id, to: tid });
+
+  // top 层连线 → 目标主链节点
+  for (const top of layerNodes.top) {
+    const anchor = LAYERS[0].anchor[top.nodeType] || 'genre';
+    const tgt = mainIds[mainOrder.indexOf(anchor)];
+    const src = positions.find(p => p.nodeType === top.nodeType);
+    if (src && tgt) STATE.edges.push({ from: src.id, to: tgt });
   }
-  
-  // 情感关系→体裁
-  for (const sn of positions.filter(p => p.layer === 'sub')) {
-    const tid = m('genre');
-    if (tid) STATE.edges.push({ from: sn.id, to: tid });
-  }
-  
-  // 修饰→主链：风格→体裁，视角→主角，章节→大纲
-  const MOD_MAP = { style:'genre', pov:'protagonist', chapter:'outline' };
-  for (const mn of positions.filter(p => p.layer === 'modifier')) {
-    const tid = m(MOD_MAP[mn.nodeType] || 'genre');
-    if (tid) STATE.edges.push({ from: mn.id, to: tid });
+
+  // bottom 层连线 → 目标主链节点
+  for (const bot of layerNodes.bottom) {
+    const anchor = LAYERS[2].anchor[bot.nodeType] || 'genre';
+    const tgt = mainIds[mainOrder.indexOf(anchor)];
+    const src = positions.find(p => p.nodeType === bot.nodeType);
+    if (src && tgt) STATE.edges.push({ from: src.id, to: tgt });
   }
   
   // 自动填入项目名称
@@ -1728,7 +1758,7 @@ function renderPalette() {
     <div class="node-palette-item" draggable="true" 
          data-type="${t.type}" style="${locked ? 'opacity:0.5;cursor:not-allowed' : ''}"
          ${locked ? '' : `ondragstart="onPaletteDragStart(event, '${t.type}')"`}
-         ondblclick="${locked ? 'toast(`🔒 情感关系模板仅专业版可用`)' : `App.addNode('${t.type}', 300, 200 + Math.random()*200)`}">
+         ondblclick="${locked ? `toast(\`🔒 ${t.name}仅专业版可用\`)` : `App.addNode('${t.type}', 300, 200 + Math.random()*200)`}">
       <span class="icon">${t.icon}${locked ? ' 🔒' : ''}</span>
       <div>
         <div class="label">${t.name}</div>
@@ -1787,7 +1817,7 @@ async function loadProjects() {
 function renderProjectList() {
   const el = document.getElementById('project-list-items');
   if (!STATE.projects.length) {
-    el.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:12px;text-align:center">暂无项目</div>';
+    el.innerHTML = '<div style="padding:16px;color:var(--text3);font-size:12px;text-align:center;line-height:1.8"><div style="font-size:32px;margin-bottom:8px">✨</div>欢迎使用 StoryFlow！<br>在右侧选择一个模板快速开始<br>或双击左侧节点手动搭建</div>';
     return;
   }
   el.innerHTML = STATE.projects.slice().reverse().map(p => {
@@ -3503,6 +3533,14 @@ function toast(msg, duration = 2500) {
 function zoomIn() { STATE.scale = Math.min(2.5, STATE.scale * 1.2); updateCanvasTransform(); }
 function zoomOut() { STATE.scale = Math.max(0.3, STATE.scale / 1.2); updateCanvasTransform(); }
 function zoomReset() { STATE.scale = 1; STATE.offsetX = 40; STATE.offsetY = 40; updateCanvasTransform(); }
+
+// 关闭提醒（写作中未手动保存）
+window.addEventListener('beforeunload', function(e) {
+  if (STATE._writing) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 // ============================================================
 //  启动
