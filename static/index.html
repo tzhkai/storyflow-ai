@@ -1197,16 +1197,13 @@
           <input class="form-input" id="generic-pres-penalty" type="number" value="0.3" min="-2" max="2" step="0.1" style="padding:5px 8px;font-size:12px">
         </div>
         <div class="form-group" style="margin-bottom:4px">
-          <label class="form-label" style="font-size:11px">自定义创作指令 <span style="color:var(--text3)">(节点卡未覆盖的细节规则，如字数、节奏、负面约束等，不影响风格卡和核心设定)</span></label>
-          <textarea id="generic-prompt" rows="4" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text1);resize:vertical;box-sizing:border-box">1. 每章2000-3000字，节奏紧凑
-2. 章节结尾留一个悬念或反转
-3. 少用成语和套话，语言自然流畅
-4. 避免故事结局走向悲剧</textarea>
+          <label class="form-label" style="font-size:11px">自定义约束规则 <span style="color:var(--text3)">(选填，节点卡未覆盖的负面约束和格式要求，不影响模板的核心设定)</span></label>
+          <textarea id="generic-prompt" rows="3" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text1);resize:vertical;box-sizing:border-box" placeholder="例如：不要悲剧结局、不涉及政治、每章结尾留悬念"></textarea>
           <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
-            <button class="prompt-preset" data-preset="default">📖 通用流畅</button>
-            <button class="prompt-preset" data-preset="literary">🎨 文学细腻</button>
-            <button class="prompt-preset" data-preset="thrilling">⚡ 爽文节奏</button>
-            <button class="prompt-preset" data-preset="mystery">🔍 悬疑烧脑</button>
+            <button class="prompt-preset" data-preset="no_tragedy">✅ 不要悲剧</button>
+            <button class="prompt-preset" data-preset="no_politics">🚫 不涉敏感</button>
+            <button class="prompt-preset" data-preset="clean_read">👶 全年龄向</button>
+            <button class="prompt-preset" data-preset="chapter_hook">📝 格式规范</button>
             <button class="prompt-preset" data-preset="clear">🗑️ 清空</button>
           </div>
         </div>
@@ -3519,10 +3516,10 @@ function saveModelConfig() {
 
 // 自定义创作指令预设
 var PROMPT_PRESETS = {
-  default: '1. 每章2000-3000字，节奏紧凑\n2. 章节结尾留一个悬念或反转\n3. 少用成语和套话，语言自然流畅\n4. 避免故事结局走向悲剧',
-  literary: '1. 多用比喻、通感等修辞，文笔有质感\n2. 侧重人物心理和环境氛围的细腻刻画\n3. 节奏舒缓，给读者沉浸感\n4. 避免大白话和过于直白的情绪表达',
-  thrilling: '1. 节奏快，剧情紧凑不拖沓\n2. 每章至少有一个爽点或小高潮\n3. 冲突场面要热血有冲击力\n4. 主角保持智商在线，不降智',
-  mystery: '1. 注重逻辑推理和细节线索的铺垫\n2. 对话中藏线索，不明显直说\n3. 反转要出人意料但合情合理\n4. 保持悬疑氛围，不提前剧透核心谜题',
+  no_tragedy: '1. 最终结局必须是好结局，不能是悲剧\n2. 不要虐主，主角可以经历困难但最终会成长和胜利\n3. 整体基调积极向上',
+  no_politics: '1. 不涉及现实政治影射\n2. 不涉及敏感历史事件\n3. 不涉及宗教极端内容',
+  clean_read: '1. 适合全年龄段阅读\n2. 不涉及色情描写\n3. 暴力场面点到为止\n4. 语言文明，不出现脏话',
+  chapter_hook: '1. 每章结尾留一个悬念或反转\n2. 段落不要太长，每段一般不超过200字\n3. 对话单独成行，便于阅读',
   clear: ''
 };
 document.addEventListener('click', function(e) {
