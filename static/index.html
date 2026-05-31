@@ -2641,7 +2641,8 @@ async function continueWriting() {
         prev_content: STATE.lastOutput,
         instruction: '请继续写下一章，保持风格一致',
         model_config: { type: STATE.modelType, ...STATE.modelConfig },
-        writing_style: document.getElementById('writing-style-select').value
+        writing_style: document.getElementById('writing-style-select').value,
+        use_platform_api: STATE.usePlatformApi && STATE.license.tier !== 'free'
       })
     });
     
@@ -2649,13 +2650,17 @@ async function continueWriting() {
       toast('🔒 续写请求被拒绝');
       document.getElementById('ep-status-text').textContent = '请求被拒绝';
       document.getElementById('ep-dot').style.background = 'var(--red)';
+      document.getElementById('btn-continue').style.display = 'flex';
       return;
     }
     
     const data = await r.json();
     STATE.currentTaskId = data.task_id;
     pollContinueTask(data.task_id);
-  } catch(e) { toast('续写失败: ' + e.message); }
+  } catch(e) {
+    toast('续写失败: ' + e.message);
+    document.getElementById('btn-continue').style.display = 'flex';
+  }
 }
 
 function pollContinueTask(taskId) {
@@ -2673,6 +2678,9 @@ function pollContinueTask(taskId) {
     } else if (data.status === 'error') {
       clearInterval(interval);
       toast('❌ 续写失败: ' + data.error);
+      document.getElementById('ep-status-text').textContent = '续写失败';
+      document.getElementById('ep-dot').style.background = 'var(--red)';
+      document.getElementById('btn-continue').style.display = 'flex';
     }
   }, 1000);
 }
