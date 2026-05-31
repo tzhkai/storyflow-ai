@@ -1094,11 +1094,6 @@ def start_writing():
 
             writing_tasks[task_id]['status'] = 'done'
 
-            if _use_platform_api:
-                output_len = len(output)
-                est_tokens = max(output_len, output_len // 3)
-                _consume_platform_tokens(est_tokens)
-
             # 增加今日生成计数
             _increment_daily_gen_count()
 
