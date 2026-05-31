@@ -71,6 +71,7 @@ TIER_FEATURES = {
         'export_formats': ['txt'],
         'writing_styles': ['literary', 'colloquial'],
         'anti_ai_level': 'basic',
+        'max_template_calls': 3,
     },
     'standard': {
         'name': '标准版',
@@ -81,6 +82,7 @@ TIER_FEATURES = {
         'anti_ai_level': 'full',
         'platform_api': True,
         'platform_api_tokens': 1000000,
+        'max_template_calls': 50,
     },
     'professional': {
         'name': '专业版',
@@ -91,6 +93,7 @@ TIER_FEATURES = {
         'anti_ai_level': 'custom',
         'platform_api': True,
         'platform_api_tokens': 5000000,
+        'max_template_calls': 999,
     },
 }
 
@@ -601,8 +604,36 @@ def generate_options():
     data = request.json
     node_type = data.get('node_type', '')
     context = data.get('context', {})
-    model_config = data.get('model_config', {})
+    mc = data.get('model_config', {})
     count = data.get('count', 4)
+
+    # License 检查
+    lic = _get_current_license()
+    max_templates = lic['info'].get('max_template_calls', 3)
+    today = time.strftime('%Y-%m-%d')
+    tc_file = DATA_DIR / f'template_count_{today}.json'
+    tc_data = load_json(tc_file, {'count': 0})
+    if tc_data['count'] >= max_templates:
+        return jsonify({
+            'ok': False,
+            'error': f'{"免费版" if lic["tier"]=="free" else "当前版本"}每日模板生成为 {max_templates} 次，今日已用完',
+            'tier': lic['tier']
+        }), 403
+
+    # 平台 API 注入
+    use_platform = data.get('use_platform_api', False)
+    if use_platform:
+        if lic['tier'] == 'free':
+            return jsonify({'ok': False, 'error': '平台 API 仅支持付费版本'}), 403
+        remaining = _get_remaining_platform_tokens()
+        if remaining <= 0:
+            return jsonify({'ok': False, 'error': '平台 API Token 已用完'}), 403
+        mc = {
+            'type': 'deepseek',
+            'api_key': PLATFORM_API_KEY,
+            'base_url': 'https://api.deepseek.com/v1',
+            'model': PLATFORM_API_MODEL,
+        }
     
     prompts = {
         'genre': f"请为一部小说生成{count}个独特的体裁/类型设定方向，以JSON数组返回，每个包含：name(名称), desc(50字描述), tags(3个关键词数组)。只返回JSON，不要其他文字。",
@@ -613,15 +644,21 @@ def generate_options():
         'style': f"为{context.get('genre','')}体裁推荐{count}种写作风格，JSON数组，每个包含：name, desc(60字), tags(3个关键词)。只返回JSON。",
         'setting_detail': f"基于以上设定，生成{count}个重要的细节设定，JSON数组，每个包含：name, desc(100字), tags(4个关键词)。只返回JSON。",
     }
-    
-    prompt = prompts.get(node_type, f"为小说的{node_type}节点生成{count}个预设选项，JSON数组返回，每个含name/desc/tags字段。只返回JSON。")
-    
+
     try:
         messages = [
             {'role': 'system', 'content': '你是一个专业的小说创作顾问，熟悉各种类型小说的创作要素。请按用户要求生成创意选项，只返回有效JSON，不要多余文字。'},
-            {'role': 'user', 'content': prompt}
+            {'role': 'user', 'content': prompts.get(node_type, f"为小说的{node_type}节点生成{count}个预设选项，JSON数组返回，每个含name/desc/tags字段。只返回JSON。")}
         ]
-        result = call_llm(nonlocal_model_config, messages)
+        result = call_llm(mc, messages)
+
+        # 平台 API Token 消耗
+        if use_platform:
+            _consume_platform_tokens(max(len(result), len(result)//3))
+
+        # 记录模板调用次数
+        tc_data['count'] += 1
+        save_json(tc_file, tc_data)
         
         # 提取JSON
         json_match = _re.search(r'\[.*\]', result, _re.DOTALL)
