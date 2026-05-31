@@ -1197,7 +1197,10 @@
           <input class="form-input" id="generic-pres-penalty" type="number" value="0.3" min="-2" max="2" step="0.1" style="padding:5px 8px;font-size:12px">
         </div>
         <div class="form-group" style="margin-bottom:4px">
-          <label class="form-label" style="font-size:11px">自定义约束规则 <span style="color:var(--text3)">(选填，节点卡未覆盖的负面约束和格式要求，不影响模板的核心设定)</span></label>
+          <label class="form-label" style="font-size:11px">
+            <input type="checkbox" id="generic-prompt-enabled" checked style="vertical-align:middle;margin-right:4px">
+            自定义创作提示 <span style="color:var(--text3)">(选填，用于补充节点卡覆盖不到的写作偏好，不影响模板核心设定)</span>
+          </label>
           <textarea id="generic-prompt" rows="3" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text1);resize:vertical;box-sizing:border-box" placeholder="例如：不要悲剧结局、不涉及政治、每章结尾留悬念"></textarea>
           <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
             <button class="prompt-preset" data-preset="no_tragedy">✅ 不要悲剧</button>
@@ -2916,7 +2919,7 @@ async function startWriting() {
         model_config: { type: STATE.modelType, ...STATE.modelConfig },
         writing_style: document.getElementById('writing-style-select').value,
         use_platform_api: STATE.usePlatformApi && STATE.license.tier !== 'free',
-        custom_prompt: STATE.modelConfig.custom_prompt || ''
+        custom_prompt: (STATE.modelConfig.custom_prompt_enabled !== false) ? (STATE.modelConfig.custom_prompt || '') : ''
       })
     });
     
@@ -3163,7 +3166,7 @@ async function continueWriting() {
         model_config: { type: STATE.modelType, ...STATE.modelConfig },
         writing_style: document.getElementById('writing-style-select').value,
         use_platform_api: STATE.usePlatformApi && STATE.license.tier !== 'free',
-        custom_prompt: STATE.modelConfig.custom_prompt || ''
+        custom_prompt: (STATE.modelConfig.custom_prompt_enabled !== false) ? (STATE.modelConfig.custom_prompt || '') : ''
       })
     });
     
@@ -3374,6 +3377,7 @@ function showModelModal() {
     document.getElementById('generic-freq-penalty').value = cfg.frequency_penalty ?? 0.3;
     document.getElementById('generic-pres-penalty').value = cfg.presence_penalty ?? 0.3;
     document.getElementById('generic-prompt').value = cfg.custom_prompt || '';
+    document.getElementById('generic-prompt-enabled').checked = cfg.custom_prompt_enabled !== false;
   }
 }
 
@@ -3502,6 +3506,7 @@ function saveModelConfig() {
   config.frequency_penalty = parseFloat(document.getElementById('generic-freq-penalty').value) || 0.3;
   config.presence_penalty = parseFloat(document.getElementById('generic-pres-penalty').value) || 0.3;
   config.custom_prompt = document.getElementById('generic-prompt').value.trim() || '';
+  config.custom_prompt_enabled = document.getElementById('generic-prompt-enabled').checked;
   
   STATE.modelType = type;
   STATE.modelConfig = config;
