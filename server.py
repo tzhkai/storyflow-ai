@@ -113,7 +113,7 @@ TIER_FEATURES = {
         'platform_api': True,
         'platform_api_tokens': 5000000,
         'max_template_calls': 999,
-        'template_types': ['genre', 'world', 'protagonist', 'outline', 'conflict', 'style', 'setting_detail'],
+        'template_types': ['genre', 'world', 'protagonist', 'outline', 'conflict', 'style', 'setting_detail', 'romance'],
     },
 }
 
@@ -426,6 +426,24 @@ BUILTIN_PRESETS = {
             {"id": "cr7", "name": "团队伙伴型", "desc": "与主角同行的团队成员，各有所长，共同成长，体现团队合作和友谊", "tags": ["团队", "成长", "合作", "多元"]},
             {"id": "cr8", "name": "引路NPC型", "desc": "在特定场景出现的关键路人，提供重要信息或道具后可能不再出现，但影响深远", "tags": ["路人", "关键", "信息", "道具"]},
         ]
+    },
+    "romance": {
+        "name": "情感关系",
+        "icon": "💕",
+        "color": "#ec4899",
+        "_pro_only": True,
+        "presets": [
+            {"id": "bl1", "name": "男男之恋 (BL)", "desc": "两个男性之间的深刻情感故事，从相遇、试探到相爱，面对世俗与自我的双重考验", "tags": ["BL", "男男", "羁绊", "试探"]},
+            {"id": "gl1", "name": "女女之恋 (GL)", "desc": "两位女性之间的细腻情感，柔情与坚定并存，突破社会期待寻找真实自我", "tags": ["GL", "女女", "细腻", "真实"]},
+            {"id": "agediff1", "name": "姐弟恋", "desc": "年上女性与年下男性，成熟与活力的碰撞，年龄差带来的独特张力与理解", "tags": ["姐弟", "年龄差", "成熟", "活力"]},
+            {"id": "agediff2", "name": "大叔萝莉", "desc": "年长男性与年轻女性，沧桑阅历与纯真活力的反差，温柔守护型感情", "tags": ["大叔", "萝莉", "守护", "反差"]},
+            {"id": "office1", "name": "办公室恋情", "desc": "职场中悄然滋生的感情，克制与冲动之间，要面对职场规则和个人情感的平衡", "tags": ["职场", "克制", "暧昧", "规则"]},
+            {"id": "campus1", "name": "校园暗恋", "desc": "青涩的校园时光，暗藏心底的悸动，从同桌到恋人，最纯粹的感情起点", "tags": ["校园", "暗恋", "青涩", "同桌"]},
+            {"id": "forbidden1", "name": "禁忌之恋", "desc": "违背常规伦理的感情，明知不可为而为之，每一步都在道德的悬崖边行走", "tags": ["禁忌", "道德", "挣扎", "背德"]},
+            {"id": "rebirth_love", "name": "重生追爱", "desc": "带着前世记忆重新开始，这一次要抓住错过的爱人，弥补所有遗憾", "tags": ["重生", "追爱", "弥补", "前世"]},
+            {"id": "enemy_love", "name": "相爱相杀", "desc": "立场对立却深深吸引，在互相伤害中产生无法割舍的羁绊", "tags": ["宿敌", "对立", "羁绊", "纠缠"]},
+            {"id": "heal_love", "name": "治愈系恋爱", "desc": "受过伤的灵魂相遇，互相疗愈，温柔而坚定地修复彼此的创口", "tags": ["治愈", "温柔", "修复", "疗伤"]},
+        ]
     }
 }
 
@@ -712,6 +730,7 @@ def generate_options():
         'conflict': f"基于大纲：{context.get('outline','')}\n请生成{count}个核心冲突设定，JSON数组，每个包含：name, desc(80字), tags(4个关键词)。只返回JSON。",
         'style': f"为{context.get('genre','')}体裁推荐{count}种写作风格，JSON数组，每个包含：name, desc(60字), tags(3个关键词)。只返回JSON。",
         'setting_detail': f"基于以上设定，生成{count}个重要的细节设定，JSON数组，每个包含：name, desc(100字), tags(4个关键词)。只返回JSON。",
+        'romance': f"基于体裁{context.get('genre','')}和主角{context.get('protagonist','')}，生成{count}个独特的情感关系设定（BL/GL/姐弟恋等），JSON数组，每个包含：name, desc(80字), tags(4个关键词)。只返回JSON。",
     }
 
     try:
