@@ -2870,6 +2870,10 @@ async function testModelConnection() {
     config.model = document.getElementById('openai-model').value;
     config.base_url = 'https://api.openai.com/v1';
   } else if (type === 'deepseek') {
+    if (STATE.usePlatformApi && STATE.license.tier !== 'free') {
+      document.getElementById('test-result-area').innerHTML = '<div style="color:var(--green);padding:10px">✅ 已启用平台 API — deepseek-v4-flash</div>';
+      return;
+    }
     config.api_key = document.getElementById('deepseek-key').value;
     config.model = document.getElementById('deepseek-model').value;
     config.base_url = 'https://api.deepseek.com/v1';
