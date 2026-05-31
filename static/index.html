@@ -820,6 +820,7 @@
     <span id="license-text">免费版</span>
   </div>
 
+  <button class="btn btn-secondary" onclick="showTemplateModal()" style="background:var(--green);color:#fff;border:none;margin-right:8px">📋 快速模板</button>
   <button class="btn btn-primary" onclick="openExecutePanel()">▶ 开始</button>
 </div>
 
@@ -1198,6 +1199,18 @@
   </div>
 </div>
 
+<!-- 快速模板弹窗 -->
+<div id="template-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box" style="max-width:700px">
+    <div class="modal-header">
+      <span style="font-size:22px">📋</span>
+      <span class="modal-title">快速模板</span>
+      <button class="btn-close" onclick="closeTemplateModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;">✕</button>
+    </div>
+    <div class="modal-body" id="template-list" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-height:60vh;overflow-y:auto"></div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast"></div>
 
@@ -1244,6 +1257,103 @@ const NODE_TYPES = [
   { type: 'setting_detail', name: '细节设定', icon: '⚙️', color: '#84cc16', desc: '丰富世界细节' },
   { type: 'custom',       name: '自定义节点', icon: '✏️', color: '#6b7280', desc: '自由输入设定', pro: true },
 ];
+
+// ========== 快速模板（一键套用整套配置） ==========
+const QUICK_TEMPLATES = [
+  { id:'t_xianxia', name:'仙侠修真', icon:'🏔️', pro:false, flow:{genre:'xianxia',world:'w1',protagonist:'p2',outline:'o1',conflict:'c1'} },
+  { id:'t_wuxia', name:'武侠江湖', icon:'⚔️', pro:false, flow:{genre:'wuxia',world:'w6',protagonist:'p1',outline:'o6',conflict:'c3'} },
+  { id:'t_scifi', name:'科幻星际', icon:'🚀', pro:false, flow:{genre:'scifi',world:'w3',protagonist:'p3',outline:'o10',conflict:'c8'} },
+  { id:'t_urban', name:'都市异能', icon:'🏙️', pro:true, flow:{genre:'都市',world:'w4',protagonist:'p6',outline:'o7',conflict:'c4'} },
+  { id:'t_romance_modern', name:'言情甜宠', icon:'💝', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p8',outline:'o8',conflict:'c7'} },
+  { id:'t_horror', name:'悬疑惊悚', icon:'🔍', pro:true, flow:{genre:'horror',world:'w5',protagonist:'p5',outline:'o4',conflict:'c5'} },
+  { id:'t_apocalypse', name:'末世求生', icon:'🧟', pro:true, flow:{genre:'apocalypse',world:'w5',protagonist:'p1',outline:'o9',conflict:'c8'} },
+  { id:'t_campus', name:'青春校园', icon:'🎒', pro:true, flow:{genre:'campus',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6'} },
+  { id:'t_bl', name:'男男之恋', icon:'🌈', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p1',outline:'o3',conflict:'c7',romance:'bl_deep'} },
+  { id:'t_gl', name:'女女之恋', icon:'🌸', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p8',outline:'o8',conflict:'c7',romance:'gl_slow'} },
+  { id:'t_age_gap', name:'姐弟恋', icon:'⏳', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',romance:'age_younger'} },
+  { id:'t_forbidden', name:'禁忌之恋', icon:'🌹', pro:true, flow:{genre:'romance',world:'w7',protagonist:'p9',outline:'o4',conflict:'c1',romance:'forb_office'} },
+  { id:'t_heal', name:'治愈系恋爱', icon:'🫂', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',romance:'heal_love'} },
+];
+
+function showTemplateModal() {
+  const isPro = STATE.license.tier === 'professional';
+  const list = document.getElementById('template-list');
+  list.innerHTML = QUICK_TEMPLATES.map(t => {
+    const locked = t.pro && !isPro;
+    return `<div class="preset-card ${locked?'locked':''}" 
+      style="${locked?'opacity:0.5;cursor:not-allowed':''}"
+      ${locked?'':`onclick="applyTemplate('${t.id}')"`}>
+      <div style="font-size:24px">${t.icon}${locked?' 🔒':''}</div>
+      <div style="font-weight:700;margin-top:4px">${t.name}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">${locked?'专业版专属':'一键套用所有设定'}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('template-modal').style.display = 'flex';
+  document.getElementById('template-modal').classList.add('show');
+}
+
+function closeTemplateModal() {
+  document.getElementById('template-modal').style.display = 'none';
+  document.getElementById('template-modal').classList.remove('show');
+}
+
+function applyTemplate(tid) {
+  const t = QUICK_TEMPLATES.find(x => x.id === tid);
+  if (!t) return;
+  if (t.pro && STATE.license.tier !== 'professional') { toast('🔒 此模板仅专业版可用'); return; }
+  
+  // 清空现有节点
+  Object.keys(STATE.nodes).forEach(id => App.removeNode(id));
+  STATE.edges = [];
+  
+  // 排列配置：体裁→世界观→主角→大纲→冲突→情感→风格
+  const order = ['genre','world','protagonist','outline','conflict','romance','style'];
+  let col = 0, row = 0;
+  const W = 220, H = 180, GAP = 20;
+  
+  for (const nodeType of order) {
+    const presetId = t.flow[nodeType];
+    if (!presetId) continue;
+    const cat = STATE.presets[nodeType];
+    if (!cat) continue;
+    const preset = cat.presets.find(p => p.id === presetId);
+    if (!preset) continue;
+    
+    const x = 50 + col * (W + GAP);
+    const y = 80 + row * (H + GAP);
+    const nid = App.addNode(nodeType, x, y);
+    STATE.nodes[nid].selected = preset;
+    
+    col++;
+    if (col >= 3) { col = 0; row++; }
+  }
+  
+  renderAllNodes();
+  updateFlowIndicator();
+  toast('✅ 模板已应用！点击「开始」写作');
+  closeTemplateModal();
+}
+
+function renderAllNodes() {
+  const canvas = document.getElementById('canvas');
+  canvas.innerHTML = '';
+  for (const [id, node] of Object.entries(STATE.nodes)) {
+    const def = NODE_TYPES.find(t => t.type === node.type);
+    if (!def) continue;
+    const el = document.createElement('div');
+    el.className = 'flow-node';
+    el.id = id;
+    el.style.left = node.x + 'px';
+    el.style.top = node.y + 'px';
+    el.style.borderColor = def.color;
+    el.innerHTML = `
+      <div class="flow-node-header" style="background:${def.color}">${def.icon} ${def.name}</div>
+      <div class="flow-node-body">${node.selected ? `✅ ${node.selected.name}` : '未选择'}</div>
+    `;
+    el.ondblclick = () => openPanel(id, node.type);
+    canvas.appendChild(el);
+  }
+}
 
 // ============================================================
 //  License + Token + API模式 管理
