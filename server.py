@@ -1232,10 +1232,10 @@ def continue_writing(task_id):
             writing_tasks[task_id_new]['progress'] = 30
             
             # 续写时加强重复惩罚
-            anti_repeat_config = dict(model_config)
-            anti_repeat_config['repeat_penalty'] = model_config.get('repeat_penalty', 1.1) + 0.15
-            anti_repeat_config['frequency_penalty'] = model_config.get('frequency_penalty', 0.3) + 0.2
-            anti_repeat_config['presence_penalty'] = model_config.get('presence_penalty', 0.3) + 0.2
+            anti_repeat_config = dict(nonlocal_model_config)
+            anti_repeat_config['repeat_penalty'] = nonlocal_model_config.get('repeat_penalty', 1.1) + 0.15
+            anti_repeat_config['frequency_penalty'] = nonlocal_model_config.get('frequency_penalty', 0.3) + 0.2
+            anti_repeat_config['presence_penalty'] = nonlocal_model_config.get('presence_penalty', 0.3) + 0.2
             
             result = call_llm(anti_repeat_config, messages)
             writing_tasks[task_id_new]['progress'] = 70
@@ -1254,6 +1254,9 @@ def continue_writing(task_id):
             writing_tasks[task_id_new]['progress'] = 100
             writing_tasks[task_id_new]['status'] = 'done'
             
+            if _use_platform_api:
+                _consume_platform_tokens(max(len(result), len(result) // 3))
+
             # 增加今日生成计数
             _increment_daily_gen_count()
                 
