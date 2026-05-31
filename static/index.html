@@ -820,7 +820,6 @@
     <span id="license-text">免费版</span>
   </div>
 
-  <button class="btn btn-secondary" onclick="showTemplateModal()" style="background:var(--green);color:#fff;border:none;margin-right:8px">📋 快速模板</button>
   <button class="btn btn-primary" onclick="openExecutePanel()">▶ 开始</button>
 </div>
 
@@ -835,21 +834,13 @@
     </div>
     <div class="sidebar-section">
       <div class="sidebar-title">⚡ 快速模板</div>
-      <button class="template-btn" onclick="App.loadTemplate('xianxia')">
-        <span class="tb-icon">⚔️</span>仙侠修真模板
-      </button>
-      <button class="template-btn" onclick="App.loadTemplate('romance')">
-        <span class="tb-icon">💕</span>甜宠言情模板
-      </button>
-      <button class="template-btn" onclick="App.loadTemplate('scifi')">
-        <span class="tb-icon">🚀</span>科幻星际模板
-      </button>
-      <button class="template-btn" onclick="App.loadTemplate('horror')">
-        <span class="tb-icon">🕵️</span>悬疑推理模板
-      </button>
-      <button class="template-btn" onclick="App.loadTemplate('apocalypse')">
-        <span class="tb-icon">🧟</span>末世求生模板
-      </button>
+      <div id="quick-templates"></div>
+    </div>
+    <div class="sidebar-section" id="pro-templates-section">
+      <div class="sidebar-title" onclick="toggleProTemplates()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+        👑 Pro版专属模板 <span id="pro-toggle-arrow">▼</span>
+      </div>
+      <div id="pro-templates" style="display:none"></div>
     </div>
     <div class="sidebar-section" id="custom-templates-section" style="display:none">
       <div class="sidebar-title">📌 我的模板</div>
@@ -1275,27 +1266,49 @@ const QUICK_TEMPLATES = [
   { id:'t_heal', name:'治愈系恋爱', icon:'🫂', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',romance:'heal_love'} },
 ];
 
-function showTemplateModal() {
+function renderQuickTemplates() {
+  const el = document.getElementById('quick-templates');
+  if (!el) return;
   const isPro = STATE.license.tier === 'professional';
-  const list = document.getElementById('template-list');
-  list.innerHTML = QUICK_TEMPLATES.map(t => {
-    const locked = t.pro && !isPro;
-    return `<div class="preset-card ${locked?'locked':''}" 
-      style="${locked?'opacity:0.5;cursor:not-allowed':''}"
-      ${locked?'':`onclick="applyTemplate('${t.id}')"`}>
-      <div style="font-size:24px">${t.icon}${locked?' 🔒':''}</div>
-      <div style="font-weight:700;margin-top:4px">${t.name}</div>
-      <div style="font-size:11px;color:var(--text3);margin-top:2px">${locked?'专业版专属':'一键套用所有设定'}</div>
-    </div>`;
-  }).join('');
-  document.getElementById('template-modal').style.display = 'flex';
-  document.getElementById('template-modal').classList.add('show');
+  el.innerHTML = QUICK_TEMPLATES.filter(t => !t.pro).map(t =>
+    `<button class="template-btn" onclick="applyTemplate('${t.id}')">
+      <span class="tb-icon">${t.icon}</span>${t.name}模板
+    </button>`
+  ).join('');
 }
 
-function closeTemplateModal() {
-  document.getElementById('template-modal').style.display = 'none';
-  document.getElementById('template-modal').classList.remove('show');
+function renderProTemplates() {
+  const el = document.getElementById('pro-templates');
+  if (!el) return;
+  const isPro = STATE.license.tier === 'professional';
+  const proTemplates = QUICK_TEMPLATES.filter(t => t.pro);
+  if (!isPro) {
+    el.innerHTML = '<div style="padding:8px;color:var(--text3);font-size:12px">🔒 升级专业版解锁 10 个专属模板</div>';
+    el.style.display = 'block';
+    return;
+  }
+  el.innerHTML = proTemplates.map(t =>
+    `<button class="template-btn" onclick="applyTemplate('${t.id}')">
+      <span class="tb-icon">${t.icon}</span>${t.name}模板
+    </button>`
+  ).join('');
+  el.style.display = 'block';
 }
+
+function toggleProTemplates() {
+  const el = document.getElementById('pro-templates');
+  const arrow = document.getElementById('pro-toggle-arrow');
+  if (el.style.display === 'none' || !el.style.display) {
+    el.style.display = 'block';
+    arrow.textContent = '▲';
+  } else {
+    el.style.display = 'none';
+    arrow.textContent = '▼';
+  }
+}
+
+function showTemplateModal() {} // 废弃，保留避免报错
+function closeTemplateModal() {}
 
 function applyTemplate(tid) {
   const t = QUICK_TEMPLATES.find(x => x.id === tid);
@@ -1360,26 +1373,30 @@ function renderAllNodes() {
 // ============================================================
 async function loadLicense() {
   try {
-    // 优先从后端注入的全局变量读取（零延迟，不依赖网络）
     if (window.__LICENSE__) {
       STATE.license = window.__LICENSE__;
       TIER_FEATURES_CACHE = window.__LICENSE__.features;
       updateLicenseBadge();
       renderPalette();
+      renderQuickTemplates();
+      renderProTemplates();
       return;
     }
-    // 降级：异步请求
     const fr = await fetch('/api/license/features');
     const fdata = await fr.json();
     STATE.license = { tier: fdata.tier, features: fdata.features };
     TIER_FEATURES_CACHE = fdata.features;
     updateLicenseBadge();
     renderPalette();
+    renderQuickTemplates();
+    renderProTemplates();
   } catch (e) {
     console.warn('[license] 加载失败:', e);
     STATE.license = { tier: 'free', features: null };
     updateLicenseBadge();
     renderPalette();
+    renderQuickTemplates();
+    renderProTemplates();
   }
 }
 var TIER_FEATURES_CACHE = null;
@@ -1572,7 +1589,9 @@ async function init() {
   await loadPresets();
   await loadProjects();
   await loadCustomTemplates();
-  await loadLicense();  // License 加载后会自动重绘面板
+  await loadLicense();
+  renderQuickTemplates();
+  renderProTemplates();
   updateModelBadge();
   setupCanvasEvents();
 }
