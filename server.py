@@ -1112,7 +1112,7 @@ def start_writing():
 请先写出：
 1. 小说标题（3个备选）
 2. 内容简介（200字）
-3. 第一章完整内容（至少2000字）
+3. 完整章节内容（至少2000字，以「第一章」为章节标题）
 
 按照以上格式输出。确保内容完整，不要写到一半中断。"""
 
@@ -1217,11 +1217,15 @@ def continue_writing(task_id):
 
             writing_tasks[task_id_new]['status'] = 'running'
             prev_content = data.get('prev_content', '')
-            instruction = data.get('instruction', '请继续写下一章')
-            # 计算下一章章节号，防止 LLM 跳章
             next_chapter_num = len(prev_summaries) + 1
-            instruction = f"⚠️ CRITICAL: 这是第{next_chapter_num}章。你的输出必须以「第{next_chapter_num}章」作为章节标题开头，绝对不能写第1章或任何其他章节号。\n\n{instruction}"
-            print(f'[DEBUG] continue: chapter={next_chapter_num}, summaries={len(prev_summaries)}', flush=True)
+            # 中文数字映射
+            CN_NUMS = ['零','一','二','三','四','五','六','七','八','九','十',
+                       '十一','十二','十三','十四','十五','十六','十七','十八','十九','二十']
+            cn_num = CN_NUMS[next_chapter_num] if next_chapter_num < len(CN_NUMS) else str(next_chapter_num)
+            
+            instruction = data.get('instruction', '请继续写下一章')
+            instruction = f"⚠️ CRITICAL: 你的输出必须以「第{cn_num}章」作为章节标题开头，使用中文数字格式。绝对不能写其他章节号。\n\n{instruction}"
+            print(f'[DEBUG] continue: chapter={next_chapter_num}({cn_num}), summaries={len(prev_summaries)}', flush=True)
             style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
 
             # 根据 anti_ai_level 决定去AI味强度
