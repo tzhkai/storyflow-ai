@@ -1093,7 +1093,8 @@
             🎁 使用平台提供的 DeepSeek API（标准版以上可用）
           </label>
           <div id="platform-api-note" style="display:none;font-size:11px;color:var(--green);margin-top:4px;margin-left:24px">
-            ✅ 已启用平台 API，无需自己填 Key · 模型：deepseek-v4-flash
+            ✅ 已启用平台 API，无需自己填 Key · 模型：deepseek-v4-flash<br>
+            💡 也可切换至其他模型（OpenAI / Ollama 等）自行填写 Key
           </div>
           <div id="platform-api-upgrade" style="display:none;font-size:11px;color:var(--orange);margin-top:4px;margin-left:24px">
             🔒 平台 API 仅标准版以上可用，请 <a href="#" onclick="showLicenseModal();return false" style="color:var(--blue)">升级 License</a>
@@ -1337,6 +1338,11 @@ function updatePlatformApiToggle() {
   } else if (hasPlatformApi) {
     cb.disabled = false;
     upgrade.style.display = 'none';
+    // 付费用户默认勾选平台 API（首次使用）
+    if (localStorage.getItem('sf_use_platform_api') === null) {
+      STATE.usePlatformApi = true;
+      localStorage.setItem('sf_use_platform_api', 'true');
+    }
     cb.checked = STATE.usePlatformApi;
     note.style.display = STATE.usePlatformApi ? 'block' : 'none';
     keyRow.style.display = STATE.usePlatformApi ? 'none' : 'block';

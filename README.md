@@ -27,7 +27,9 @@
 
 ## 快速开始
 
-### 一键安装（macOS）
+### 一键安装
+
+**macOS：** 打开终端，粘贴运行：
 
 ```bash
 git clone https://github.com/tzhkai/storyflow-ai.git
@@ -35,17 +37,17 @@ cd storyflow-ai
 bash install.sh
 ```
 
+**Windows：** 确保已安装 Python 3.10+，然后双击 `install.bat`
+
 脚本会自动完成：环境检测 → 安装依赖 → 启动服务 → 开机自启 → 打开写作页面。
 
 **之后每次开机自动启动，无需手动操作。**
 
 ```bash
-# 管理命令
-bash uninstall.sh    # 卸载
-cat server.log       # 查看日志
+# 卸载（macOS）
+bash uninstall.sh
 ```
-
-> Windows 用户：确保已安装 Python 3.10+，然后运行 `bash start.sh`
+Windows 用户双击 `uninstall.bat` 即可。
 
 ### 配置 AI 模型
 
