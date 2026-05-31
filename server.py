@@ -54,12 +54,21 @@ PRESETS_FILE = DATA_DIR / 'presets.json'
 CUSTOM_TEMPLATES_FILE = DATA_DIR / 'custom_templates.json'
 
 # ========== License 机制 ==========
+# 加载本地 .env（不上传 GitHub）
+_env_file = Path(__file__).parent / '.env'
+if _env_file.exists():
+    with open(_env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                os.environ.setdefault(k.strip(), v.strip())
 # 签名密钥（生产环境应从环境变量读取，此处为演示用）
 _LICENSE_SECRET = b'storyflow-license-secret-2026'
 
 # ========== 平台 API（付费用户可选） ==========
-PLATFORM_API_KEY = 'PLATFORM_API_KEY_PLACEHOLDER'
-PLATFORM_API_MODEL = 'deepseek-v4-flash'
+PLATFORM_API_KEY = os.environ.get('SF_PLATFORM_API_KEY', '')
+PLATFORM_API_MODEL = os.environ.get('SF_PLATFORM_MODEL', 'deepseek-v4-flash')
 LICENSE_FILE = DATA_DIR / 'license.json'
 
 # ========== 功能分级定义 ==========
