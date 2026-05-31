@@ -1287,7 +1287,10 @@ function updateLicenseBadge() {
   if (lsDetail) {
     const f = STATE.license.features;
     if (f) {
-      lsDetail.innerHTML = `流程图: ${f.max_flows === 999 ? '无限' : f.max_flows} | 导出: ${f.export_formats.join('/')} | 每日生成: ${f.max_daily_generations === 999 ? '无限' : f.max_daily_generations}次`;
+      const tokenInfo = f.platform_tokens_total
+        ? ` | 平台API: ${(~~((f.platform_tokens_remaining || 0) / 10000))}万 / ${(f.platform_tokens_total / 10000)}万 Token`
+        : '';
+      lsDetail.innerHTML = `流程图: ${f.max_flows === 999 ? '无限' : f.max_flows} | 导出: ${f.export_formats.join('/')}${tokenInfo}`;
     }
   }
   

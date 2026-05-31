@@ -80,6 +80,7 @@ TIER_FEATURES = {
         'writing_styles': ['literary', 'colloquial', 'hardcore', 'poetic'],
         'anti_ai_level': 'full',
         'platform_api': True,
+        'platform_api_tokens': 1000000,
     },
     'professional': {
         'name': '专业版',
@@ -89,6 +90,7 @@ TIER_FEATURES = {
         'writing_styles': ['literary', 'colloquial', 'hardcore', 'poetic', 'custom'],
         'anti_ai_level': 'custom',
         'platform_api': True,
+        'platform_api_tokens': 5000000,
     },
 }
 
@@ -208,9 +210,14 @@ def deactivate_license():
 def get_features():
     """获取功能权限列表（前端用来控制 UI 锁）"""
     lic = _get_current_license()
+    info = dict(lic['info'])
+    if info.get('platform_api_tokens', 0) > 0:
+        remaining = _get_remaining_platform_tokens()
+        info['platform_tokens_remaining'] = remaining
+        info['platform_tokens_total'] = lic['info']['platform_api_tokens']
     return jsonify({
         'tier': lic['tier'],
-        'features': lic['info'],
+        'features': info,
     })
 
 # ========== 预设数据 ==========
@@ -829,10 +836,15 @@ def start_writing():
     if use_platform_api:
         if lic['tier'] == 'free':
             return jsonify({
-                'error': '平台 API 仅支持付费版本（标准版/专业版）使用，请先升级',
+                'error': '平台 API 仅支持付费版本使用，请先升级',
                 'tier': 'free'
             }), 403
-        # 覆盖 model_config 使用平台 Key
+        remaining = _get_remaining_platform_tokens()
+        if remaining <= 0:
+            return jsonify({
+                'error': '平台 API Token 已用完，请使用自己的 Key 或升级',
+                'tier': lic['tier']
+            }), 403
         model_config = {
             'type': 'deepseek',
             'api_key': PLATFORM_API_KEY,
@@ -952,7 +964,17 @@ def start_writing():
             if summary:
                 writing_tasks[task_id]['chapter_summaries'].append(summary)
             writing_tasks[task_id]['progress'] = 100
+            if use_platform_api:
+                output_len = len(content)
+                est_tokens = max(output_len, output_len // 3)
+                _consume_platform_tokens(est_tokens)
+
             writing_tasks[task_id]['status'] = 'done'
+
+            if _use_platform_api:
+                output_len = len(output)
+                est_tokens = max(output_len, output_len // 3)
+                _consume_platform_tokens(est_tokens)
 
             # 增加今日生成计数
             _increment_daily_gen_count()
@@ -997,12 +1019,17 @@ def continue_writing(task_id):
         try:
             # 平台 API 模式检查
             nonlocal_model_config = model_config
-            use_platform_api = data.get('use_platform_api', False)
-            if use_platform_api:
+            _use_platform_api = data.get('use_platform_api', False)
+            if _use_platform_api:
                 lic_pre = _get_current_license()
                 if lic_pre['tier'] == 'free':
                     writing_tasks[task_id_new]['status'] = 'error'
                     writing_tasks[task_id_new]['error'] = '平台 API 仅支持付费版本使用，请先升级'
+                    return
+                remaining = _get_remaining_platform_tokens()
+                if remaining <= 0:
+                    writing_tasks[task_id_new]['status'] = 'error'
+                    writing_tasks[task_id_new]['error'] = '平台 API Token 已用完，请使用自己的 Key 或升级'
                     return
                 nonlocal_model_config = {
                     'type': 'deepseek',
