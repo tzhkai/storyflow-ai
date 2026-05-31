@@ -1319,7 +1319,11 @@ def index():
     html = html.replace('</head>', inject, 1)
     
     from flask import Response
-    return Response(html, mimetype='text/html')
+    resp = Response(html, mimetype='text/html')
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
 
 @app.route('/<path:filename>')
 def static_files(filename):
