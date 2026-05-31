@@ -444,6 +444,51 @@ BUILTIN_PRESETS = {
             {"id": "enemy_love", "name": "相爱相杀", "desc": "立场对立却深深吸引，在互相伤害中产生无法割舍的羁绊", "tags": ["宿敌", "对立", "羁绊", "纠缠"]},
             {"id": "heal_love", "name": "治愈系恋爱", "desc": "受过伤的灵魂相遇，互相疗愈，温柔而坚定地修复彼此的创口", "tags": ["治愈", "温柔", "修复", "疗伤"]},
         ]
+    },
+    "romance_bl": {
+        "name": "男男之恋",
+        "icon": "🌈",
+        "color": "#f472b6",
+        "_pro_only": True,
+        "presets": [
+            {"id": "bl_deep", "name": "深柜觉醒", "desc": "从未察觉自己的取向，直到遇见他。挣扎、否认、接受、勇敢，心理成长线", "tags": ["觉醒", "挣扎", "接受", "勇气"]},
+            {"id": "bl_rival", "name": "强强对抗", "desc": "两个强势男性，从竞争对手到相爱相知，谁也不肯先低头", "tags": ["强强", "对抗", "平等", "征服"]},
+            {"id": "bl_dom", "name": "霸道占有", "desc": "一方向来掌控一切，直到遇到无法掌控的那个人，强烈的占有欲与保护欲", "tags": ["霸道", "占有", "失控", "宠爱"]},
+            {"id": "bl_class", "name": "身份悬殊", "desc": "社会地位悬殊的两人，跨越阶层与成见，用真情打破一切藩篱", "tags": ["阶级", "突破", "偏见", "真心"]},
+        ]
+    },
+    "romance_gl": {
+        "name": "女女之恋",
+        "icon": "🌸",
+        "color": "#c084fc",
+        "_pro_only": True,
+        "presets": [
+            {"id": "gl_slow", "name": "慢热升温", "desc": "从朋友到知己再到恋人，感情在细腻的日常相处中悄然生长", "tags": ["慢热", "细腻", "日常", "友达"]},
+            {"id": "gl_brave", "name": "勇敢出柜", "desc": "面对家庭和社会压力，下定决心公开关系，真实的勇气比爱情更动人", "tags": ["出柜", "家人", "社会", "勇气"]},
+            {"id": "gl_reunion", "name": "破镜重圆", "desc": "年少错过，多年后重逢才发现彼此从未放下，第二次机会能否抓住", "tags": ["错过", "重逢", "执念", "放下"]},
+        ]
+    },
+    "age_gap": {
+        "name": "年龄差恋",
+        "icon": "⏳",
+        "color": "#fb923c",
+        "_pro_only": True,
+        "presets": [
+            {"id": "age_younger", "name": "年下攻略", "desc": "年轻一方的主动追求，用热忱和纯真打破年龄壁垒，让对方无法抗拒", "tags": ["年下", "主动", "热忱", "纯真"]},
+            {"id": "age_older", "name": "大叔宠爱", "desc": "年长男性的温柔守护，用阅历和成熟包容对方的一切，沉稳而深情", "tags": ["大叔", "守护", "成熟", "包容"]},
+            {"id": "age_secret", "name": "隐秘关系", "desc": "年龄差带来的社会压力，让这段感情只能秘密进行，刺激与压力并存", "tags": ["隐秘", "压力", "刺激", "禁忌"]},
+        ]
+    },
+    "forbidden": {
+        "name": "禁忌之恋",
+        "icon": "🌹",
+        "color": "#e11d48",
+        "_pro_only": True,
+        "presets": [
+            {"id": "forb_office", "name": "办公室地下情", "desc": "职场中的禁忌关系，偷偷约在公司角落，每一次对视都是心动的冒险", "tags": ["职场", "地下", "刺激", "危险"]},
+            {"id": "forb_enemy", "name": "宿敌相恋", "desc": "本应互相厮杀的敌人，却在一次次交锋中产生致命吸引力", "tags": ["宿敌", "致命", "背叛", "纠缠"]},
+            {"id": "forb_identity", "name": "身份错位", "desc": "戴着面具靠近的你，当真实身份揭开的瞬间，谎言是否毁掉一切", "tags": ["伪装", "谎言", "揭晓", "原谅"]},
+        ]
     }
 }
 
@@ -686,11 +731,12 @@ def generate_options():
     # License 检查
     lic = _get_current_license()
     
-    # 情感关系模板仅专业版可用
-    if node_type == 'romance' and lic['tier'] != 'professional':
+    # Pro 专属模板检查
+    PRO_ONLY_TYPES = {'romance', 'romance_bl', 'romance_gl', 'age_gap', 'forbidden', 'custom'}
+    if node_type in PRO_ONLY_TYPES and lic['tier'] != 'professional':
         return jsonify({
             'ok': False,
-            'error': '情感关系模板仅专业版可用，请升级',
+            'error': '此模板仅专业版可用，请升级',
             'tier': lic['tier']
         }), 403
     
@@ -729,6 +775,10 @@ def generate_options():
         'style': f"为{context.get('genre','')}体裁推荐{count}种写作风格，JSON数组，每个包含：name, desc(60字), tags(3个关键词)。只返回JSON。",
         'setting_detail': f"基于以上设定，生成{count}个重要的细节设定，JSON数组，每个包含：name, desc(100字), tags(4个关键词)。只返回JSON。",
         'romance': f"基于体裁{context.get('genre','')}和主角{context.get('protagonist','')}，生成{count}个独特的情感关系设定（BL/GL/姐弟恋等），JSON数组，每个包含：name, desc(80字), tags(4个关键词)。只返回JSON。",
+        'romance_bl': f"基于体裁{context.get('genre','')}，生成{count}个男男之恋(BL)设定，JSON数组，每个包含：name, desc(80字), tags(4个关键词)。只返回JSON。",
+        'romance_gl': f"基于体裁{context.get('genre','')}，生成{count}个女女之恋(GL)设定，JSON数组，每个包含：name, desc(80字), tags(4个关键词)。只返回JSON。",
+        'age_gap': f"基于体裁{context.get('genre','')}和主角{context.get('protagonist','')}，生成{count}个年龄差恋爱设定，JSON数组，每个包含：name, desc(80字), tags(4个关键词)。只返回JSON。",
+        'forbidden': f"基于体裁{context.get('genre','')}，生成{count}个禁忌之恋设定（办公室/身份差异等），JSON数组，每个包含：name, desc(80字), tags(4个关键词)。只返回JSON。",
     }
 
     try:
