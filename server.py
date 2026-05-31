@@ -113,7 +113,7 @@ TIER_FEATURES = {
         'platform_api': True,
         'platform_api_tokens': 5000000,
         'max_template_calls': 999,
-        'template_types': ['genre', 'world', 'protagonist', 'outline', 'conflict', 'style', 'setting_detail', 'romance'],
+        'template_types': ['genre', 'world', 'protagonist', 'outline', 'conflict', 'style', 'setting_detail', 'romance', 'chapter', 'characters', 'pov', 'custom'],
     },
 }
 
