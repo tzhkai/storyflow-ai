@@ -74,8 +74,8 @@ TIER_FEATURES = {
     },
     'standard': {
         'name': '标准版',
-        'max_flows': 999,
-        'max_daily_generations': 999,
+        'max_flows': 5,
+        'max_daily_generations': 50,
         'export_formats': ['txt', 'pdf'],
         'writing_styles': ['literary', 'colloquial', 'hardcore', 'poetic'],
         'anti_ai_level': 'full',
