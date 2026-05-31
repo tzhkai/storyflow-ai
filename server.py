@@ -72,6 +72,7 @@ TIER_FEATURES = {
         'writing_styles': ['literary', 'colloquial'],
         'anti_ai_level': 'basic',
         'max_template_calls': 3,
+        'template_types': ['genre'],
     },
     'standard': {
         'name': '标准版',
@@ -83,6 +84,7 @@ TIER_FEATURES = {
         'platform_api': True,
         'platform_api_tokens': 1000000,
         'max_template_calls': 50,
+        'template_types': ['genre', 'outline'],
     },
     'professional': {
         'name': '专业版',
@@ -94,6 +96,7 @@ TIER_FEATURES = {
         'platform_api': True,
         'platform_api_tokens': 5000000,
         'max_template_calls': 999,
+        'template_types': ['genre', 'world', 'protagonist', 'outline', 'conflict', 'style', 'setting_detail'],
     },
 }
 
@@ -609,6 +612,17 @@ def generate_options():
 
     # License 检查
     lic = _get_current_license()
+    
+    # 模板种类检查
+    allowed_types = lic['info'].get('template_types', ['genre'])
+    if node_type not in allowed_types:
+        return jsonify({
+            'ok': False,
+            'error': f'当前版本不支持「{node_type}」模板，请升级专业版',
+            'tier': lic['tier'],
+            'allowed': allowed_types
+        }), 403
+    
     max_templates = lic['info'].get('max_template_calls', 3)
     today = time.strftime('%Y-%m-%d')
     tc_file = DATA_DIR / f'template_count_{today}.json'

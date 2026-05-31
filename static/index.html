@@ -1254,10 +1254,12 @@ async function loadLicense() {
     STATE.license = { tier: fdata.tier, features: fdata.features };
     TIER_FEATURES_CACHE = fdata.features;
     updateLicenseBadge();
+    renderPalette();
   } catch (e) {
     console.warn('[license] 加载失败:', e);
     STATE.license = { tier: 'free', features: null };
     updateLicenseBadge();
+    renderPalette();
   }
 }
 var TIER_FEATURES_CACHE = null;
@@ -1455,18 +1457,21 @@ async function init() {
 
 function renderPalette() {
   const el = document.getElementById('node-palette');
-  el.innerHTML = NODE_TYPES.map(t => `
+  const allowed = STATE.license.features ? (STATE.license.features.template_types || ['genre']) : ['genre'];
+  el.innerHTML = NODE_TYPES.map(t => {
+    const locked = !allowed.includes(t.type);
+    return `
     <div class="node-palette-item" draggable="true" 
-         data-type="${t.type}"
-         ondragstart="onPaletteDragStart(event, '${t.type}')"
-         ondblclick="App.addNode('${t.type}', 300, 200 + Math.random()*200)">
-      <span class="icon">${t.icon}</span>
+         data-type="${t.type}" style="${locked ? 'opacity:0.5;cursor:not-allowed' : ''}"
+         ${locked ? '' : `ondragstart="onPaletteDragStart(event, '${t.type}')"`}
+         ondblclick="${locked ? 'toast(`🔒 当前版本不支持此模板，请升级专业版`)' : `App.addNode('${t.type}', 300, 200 + Math.random()*200)`}">
+      <span class="icon">${t.icon}${locked ? ' 🔒' : ''}</span>
       <div>
         <div class="label">${t.name}</div>
-        <div class="sublabel">${t.desc}</div>
+        <div class="sublabel">${locked ? '升级解锁' : t.desc}</div>
       </div>
     </div>
-  `).join('');
+  `}).join('');
 }
 
 async function loadPresets() {
