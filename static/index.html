@@ -802,7 +802,7 @@
   <input id="project-name-input" type="text" value="新小说项目" placeholder="项目名称">
   <div class="sep"></div>
 
-  <div id="project-dropdown">
+  <div id="project-dropdown" style="position:relative">
     <div id="project-trigger" onclick="toggleProjectList()" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 10px;border-radius:6px;background:var(--bg2);font-size:13px">
       📁 <span id="current-project-name">我的项目</span> ▾
     </div>
@@ -857,10 +857,6 @@
       <div class="sidebar-title">📌 我的模板</div>
       <div id="custom-templates-list"></div>
     </div>
-    <div style="padding: 12px; border-bottom: 1px solid var(--border);">
-      <div class="sidebar-title">📁 项目列表</div>
-    </div>
-    <div id="sidebar-projects"></div>
   </div>
 
   <!-- 画布 -->
