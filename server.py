@@ -89,6 +89,24 @@ PLATFORM_API_KEY = _load_platform_key()
 PLATFORM_API_MODEL = os.environ.get('SF_PLATFORM_MODEL', 'deepseek-v4-flash')
 LICENSE_FILE = DATA_DIR / 'license.json'
 
+# ========== 模板类型中文名 ==========
+NODE_TYPE_LABELS = {
+    'genre': '题材设定',
+    'world': '世界观设定',
+    'protagonist': '主角设定',
+    'outline': '故事大纲',
+    'conflict': '冲突设定',
+    'style': '写作风格',
+    'setting_detail': '细节设定',
+    'romance': '情感关系',
+    'chapter': '章节设定',
+    'characters': '角色设定',
+    'pov': '叙事视角',
+    'custom': '自定义模板',
+}
+def _node_type_label(t):
+    return NODE_TYPE_LABELS.get(t, t)
+
 # ========== 功能分级定义 ==========
 TIER_FEATURES = {
     'free': {
@@ -734,6 +752,15 @@ def generate_options():
         return jsonify({
             'ok': False,
             'error': '此模板仅专业版可用，请升级',
+            'tier': lic['tier']
+        }), 403
+
+    # 模板类型权限检查（Free/Standard/Pro 可用模板不同）
+    allowed_templates = lic['info'].get('template_types', ['genre'])
+    if node_type not in allowed_templates:
+        return jsonify({
+            'ok': False,
+            'error': f'当前版本不支持「{_node_type_label(node_type)}」模板，请升级',
             'tier': lic['tier']
         }), 403
     
