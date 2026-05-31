@@ -1088,7 +1088,7 @@ def start_writing():
                 writing_tasks[task_id]['chapter_summaries'].append(summary)
             writing_tasks[task_id]['progress'] = 100
             if use_platform_api:
-                output_len = len(content)
+                output_len = len(result)
                 est_tokens = max(output_len, output_len // 3)
                 _consume_platform_tokens(est_tokens)
 
