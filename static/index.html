@@ -1364,16 +1364,16 @@ function applyTemplate(tid) {
   }
 
   // ========== 节点布局（树形层级，清晰美观） ==========
-  const NODE_W = 240, GAP = 120;
+  const NODE_W = 240, GAP = 160;
   const mainOrder = ['genre', 'world', 'protagonist', 'outline', 'conflict'];
   const mainX = {};
   mainOrder.forEach((type, i) => { mainX[type] = 50 + i * (NODE_W + GAP); });
 
   const LAYERS = [
-    { name: 'top',    y: 80,  items: ['romance','characters','setting_detail'],
+    { name: 'top',    y: 60,  items: ['romance','characters','setting_detail'],
       anchor: { romance: 'genre', characters: 'protagonist', setting_detail: 'world' } },
-    { name: 'main',   y: 260, items: mainOrder, anchor: {} },
-    { name: 'bottom', y: 440, items: ['style','pov','chapter'],
+    { name: 'main',   y: 280, items: mainOrder, anchor: {} },
+    { name: 'bottom', y: 500, items: ['style','pov','chapter'],
       anchor: { style: 'genre', pov: 'protagonist', chapter: 'outline' } },
   ];
 
@@ -1398,7 +1398,7 @@ function applyTemplate(tid) {
         );
         if (sameAnchor.length > 0) {
           const idx = sameAnchor.filter(n => n.nodeType < item.nodeType).length + 1;
-          x += (idx - (sameAnchor.length) / 2) * (NODE_W + 40);
+          x += (idx - (sameAnchor.length) / 2) * (NODE_W + 60);
         }
       } else {
         x = mainX[item.nodeType];
@@ -1758,7 +1758,7 @@ function renderPalette() {
     <div class="node-palette-item" draggable="true" 
          data-type="${t.type}" style="${locked ? 'opacity:0.5;cursor:not-allowed' : ''}"
          ${locked ? '' : `ondragstart="onPaletteDragStart(event, '${t.type}')"`}
-         ondblclick="${locked ? `toast(\`🔒 ${t.name}仅专业版可用\`)` : `App.addNode('${t.type}', 300, 200 + Math.random()*200)`}">
+         ondblclick="${locked ? `toast(\`🔒 ${t.name}仅专业版可用\`)` : `App.addNode('${t.type}', 300, 280 + Math.random()*300)`}">
       <span class="icon">${t.icon}${locked ? ' 🔒' : ''}</span>
       <div>
         <div class="label">${t.name}</div>
