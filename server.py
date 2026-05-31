@@ -56,6 +56,10 @@ CUSTOM_TEMPLATES_FILE = DATA_DIR / 'custom_templates.json'
 # ========== License 机制 ==========
 # 签名密钥（生产环境应从环境变量读取，此处为演示用）
 _LICENSE_SECRET = b'storyflow-license-secret-2026'
+
+# ========== 平台 API（付费用户可选） ==========
+PLATFORM_API_KEY = 'PLATFORM_API_KEY_PLACEHOLDER'
+PLATFORM_API_MODEL = 'deepseek-v4-flash'
 LICENSE_FILE = DATA_DIR / 'license.json'
 
 # ========== 功能分级定义 ==========
@@ -75,6 +79,7 @@ TIER_FEATURES = {
         'export_formats': ['txt', 'pdf'],
         'writing_styles': ['literary', 'colloquial', 'hardcore', 'poetic'],
         'anti_ai_level': 'full',
+        'platform_api': True,
     },
     'professional': {
         'name': '专业版',
@@ -83,6 +88,7 @@ TIER_FEATURES = {
         'export_formats': ['txt', 'pdf', 'epub', 'docx'],
         'writing_styles': ['literary', 'colloquial', 'hardcore', 'poetic', 'custom'],
         'anti_ai_level': 'custom',
+        'platform_api': True,
     },
 }
 
@@ -608,7 +614,7 @@ def generate_options():
             {'role': 'system', 'content': '你是一个专业的小说创作顾问，熟悉各种类型小说的创作要素。请按用户要求生成创意选项，只返回有效JSON，不要多余文字。'},
             {'role': 'user', 'content': prompt}
         ]
-        result = call_llm(model_config, messages)
+        result = call_llm(nonlocal_model_config, messages)
         
         # 提取JSON
         json_match = _re.search(r'\[.*\]', result, _re.DOTALL)
@@ -818,6 +824,22 @@ def start_writing():
             'allowed': allowed_styles
         }), 403
 
+    # 平台 API 模式检查
+    use_platform_api = data.get('use_platform_api', False)
+    if use_platform_api:
+        if lic['tier'] == 'free':
+            return jsonify({
+                'error': '平台 API 仅支持付费版本（标准版/专业版）使用，请先升级',
+                'tier': 'free'
+            }), 403
+        # 覆盖 model_config 使用平台 Key
+        model_config = {
+            'type': 'deepseek',
+            'api_key': PLATFORM_API_KEY,
+            'base_url': 'https://api.deepseek.com/v1',
+            'model': PLATFORM_API_MODEL,
+        }
+
     # 免费版每日生成次数检查
     daily_count = _get_daily_gen_count()
     max_gen = lic['info'].get('max_daily_generations', 3)
@@ -973,6 +995,22 @@ def continue_writing(task_id):
     
     def do_continue():
         try:
+            # 平台 API 模式检查
+            nonlocal_model_config = model_config
+            use_platform_api = data.get('use_platform_api', False)
+            if use_platform_api:
+                lic_pre = _get_current_license()
+                if lic_pre['tier'] == 'free':
+                    writing_tasks[task_id_new]['status'] = 'error'
+                    writing_tasks[task_id_new]['error'] = '平台 API 仅支持付费版本使用，请先升级'
+                    return
+                nonlocal_model_config = {
+                    'type': 'deepseek',
+                    'api_key': PLATFORM_API_KEY,
+                    'base_url': 'https://api.deepseek.com/v1',
+                    'model': PLATFORM_API_MODEL,
+                }
+
             # 写作风格权限检查
             lic_cont = _get_current_license()
             writing_style = data.get('writing_style', 'literary')

@@ -1087,7 +1087,19 @@
       </div>
 
       <div id="model-config-deepseek" style="display:none">
-        <div class="form-group">
+        <div class="form-group" id="platform-api-row" style="margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text1)">
+            <input type="checkbox" id="use-platform-api" onchange="togglePlatformApi()" style="width:16px;height:16px;cursor:pointer">
+            🎁 使用平台提供的 DeepSeek API（标准版以上可用）
+          </label>
+          <div id="platform-api-note" style="display:none;font-size:11px;color:var(--green);margin-top:4px;margin-left:24px">
+            ✅ 已启用平台 API，无需自己填 Key · 模型：deepseek-v4-flash
+          </div>
+          <div id="platform-api-upgrade" style="display:none;font-size:11px;color:var(--orange);margin-top:4px;margin-left:24px">
+            🔒 平台 API 仅标准版以上可用，请 <a href="#" onclick="showLicenseModal();return false" style="color:var(--blue)">升级 License</a>
+          </div>
+        </div>
+        <div class="form-group" id="deepseek-key-row">
           <label class="form-label">API Key</label>
           <input class="form-input" id="deepseek-key" type="password" placeholder="sk-...">
         </div>
@@ -1213,6 +1225,7 @@ const STATE = {
   projects: [],
   currentProjectId: null,
   license: { tier: 'free', features: null },
+  usePlatformApi: localStorage.getItem('sf_use_platform_api') === 'true',
 };
 
 // 节点类型定义
@@ -1301,6 +1314,47 @@ function updateStyleLock() {
     opt.disabled = locked;
     opt.textContent = locked ? opt.textContent.replace(/🔒/g, '').trim() + ' 🔒' : opt.textContent.replace(/🔒/g, '').trim();
   });
+  updatePlatformApiToggle();
+}
+
+function updatePlatformApiToggle() {
+  const cb = document.getElementById('use-platform-api');
+  const note = document.getElementById('platform-api-note');
+  const upgrade = document.getElementById('platform-api-upgrade');
+  const keyRow = document.getElementById('deepseek-key-row');
+  if (!cb) return;
+
+  const tier = STATE.license.tier;
+  const hasPlatformApi = STATE.license.features && STATE.license.features.platform_api;
+
+  if (tier === 'free') {
+    cb.disabled = true;
+    cb.checked = false;
+    note.style.display = 'none';
+    upgrade.style.display = 'block';
+    keyRow.style.display = 'block';
+    STATE.usePlatformApi = false;
+  } else if (hasPlatformApi) {
+    cb.disabled = false;
+    upgrade.style.display = 'none';
+    cb.checked = STATE.usePlatformApi;
+    note.style.display = STATE.usePlatformApi ? 'block' : 'none';
+    keyRow.style.display = STATE.usePlatformApi ? 'none' : 'block';
+  } else {
+    cb.disabled = true;
+    cb.checked = false;
+    note.style.display = 'none';
+    upgrade.style.display = 'block';
+    keyRow.style.display = 'block';
+    STATE.usePlatformApi = false;
+  }
+}
+
+function togglePlatformApi() {
+  const cb = document.getElementById('use-platform-api');
+  STATE.usePlatformApi = cb.checked;
+  localStorage.setItem('sf_use_platform_api', cb.checked ? 'true' : 'false');
+  updatePlatformApiToggle();
 }
 
 function showLicenseModal() {
@@ -2415,7 +2469,8 @@ async function startWriting() {
       body: JSON.stringify({
         flow: flowConfig,
         model_config: { type: STATE.modelType, ...STATE.modelConfig },
-        writing_style: document.getElementById('writing-style-select').value
+        writing_style: document.getElementById('writing-style-select').value,
+        use_platform_api: STATE.usePlatformApi && STATE.license.tier !== 'free'
       })
     });
     
