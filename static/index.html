@@ -23,7 +23,7 @@
     --cyan: #06b6d4;
     --pink: #ec4899;
     --shadow: rgba(0,0,0,0.5);
-    --node-w: 280px;
+    --node-w: 240px;
     --glow: 0 0 20px rgba(124,106,247,0.3);
   }
 
@@ -215,25 +215,22 @@
     position: absolute;
     width: var(--node-w);
     background: var(--bg2);
-    border: 1px solid var(--border2);
-    border-radius: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
     cursor: move;
     user-select: none;
-    transition: box-shadow 0.2s, border-color 0.2s;
+    transition: border-color 0.15s;
     z-index: 10;
   }
   .node:hover {
-    box-shadow: var(--glow);
     border-color: var(--accent2);
     z-index: 15;
   }
   .node.selected {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(124,106,247,0.4), var(--glow);
     z-index: 20;
   }
   .node.dragging {
-    box-shadow: 0 8px 32px rgba(124,106,247,0.35), var(--glow);
     border-color: var(--accent);
     z-index: 25;
     transition: none;
@@ -242,13 +239,13 @@
   .node.done { border-color: var(--green); }
 
   .node-header {
-    padding: 10px 14px;
-    border-radius: 11px 11px 0 0;
+    padding: 6px 10px;
+    border-radius: 7px 7px 0 0;
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    font-weight: 700;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
     position: relative;
   }
   .node-header .node-icon { font-size: 18px; }
@@ -269,7 +266,7 @@
   }
   .node:hover .btn-delete { opacity: 1; }
 
-  .node-body { padding: 12px 14px; }
+  .node-body { padding: 6px 10px; }
 
   .node-port {
     position: absolute;
@@ -293,13 +290,13 @@
     background: var(--bg3);
     border: 1px solid var(--border2);
     border-radius: 8px;
-    padding: 8px 10px;
-    font-size: 12px;
+    padding: 6px 8px;
+    font-size: 11px;
     margin-bottom: 8px;
     position: relative;
   }
-  .selected-item .si-name { font-weight: 700; color: var(--text); font-size: 13px; }
-  .selected-item .si-desc { color: var(--text2); margin-top: 3px; line-height: 1.4; }
+  .selected-item .si-name { font-weight: 600; color: var(--text); font-size: 12px; }
+  .selected-item .si-desc { color: var(--text2); margin-top: 2px; line-height: 1.4; font-size: 11px; }
   .selected-item .si-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
   .si-tag { background: rgba(124,106,247,0.15); color: var(--accent); border-radius: 4px; padding: 2px 7px; font-size: 10px; }
   .si-tag.ai { background: rgba(6,182,212,0.15); color: var(--cyan); }
@@ -717,7 +714,7 @@
   .zoom-btn:hover { background: var(--bg3); color: var(--text); }
 
   /* 自定义输入节点 */
-  .custom-node .node-header { background: linear-gradient(135deg, #2d2d3d, #1e1e2a); }
+  .custom-node .node-header { background: var(--bg3); }
 
   /* 滚动条 */
   ::-webkit-scrollbar { width: 5px; }
@@ -1197,18 +1194,6 @@
   </div>
 </div>
 
-<!-- 快速模板弹窗 -->
-<div id="template-modal" class="modal-overlay" style="display:none">
-  <div class="modal-box" style="max-width:700px">
-    <div class="modal-header">
-      <span style="font-size:22px">📋</span>
-      <span class="modal-title">快速模板</span>
-      <button class="btn-close" onclick="closeTemplateModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;">✕</button>
-    </div>
-    <div class="modal-body" id="template-list" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-height:60vh;overflow-y:auto"></div>
-  </div>
-</div>
-
 <!-- Toast -->
 <div id="toast"></div>
 
@@ -1258,19 +1243,19 @@ const NODE_TYPES = [
 
 // ========== 快速模板（一键套用整套配置） ==========
 const QUICK_TEMPLATES = [
-  { id:'t_xianxia', name:'仙侠修真', icon:'🏔️', pro:false, flow:{genre:'xianxia',world:'w1',protagonist:'p2',outline:'o1',conflict:'c1'} },
-  { id:'t_wuxia', name:'武侠江湖', icon:'⚔️', pro:false, flow:{genre:'wuxia',world:'w6',protagonist:'p1',outline:'o6',conflict:'c3'} },
-  { id:'t_scifi', name:'科幻星际', icon:'🚀', pro:false, flow:{genre:'scifi',world:'w3',protagonist:'p3',outline:'o10',conflict:'c8'} },
-  { id:'t_urban', name:'都市异能', icon:'🏙️', pro:true, flow:{genre:'都市',world:'w4',protagonist:'p6',outline:'o7',conflict:'c4'} },
-  { id:'t_romance_modern', name:'甜宠言情', icon:'💝', pro:false, flow:{genre:'romance',world:'w4',protagonist:'p8',outline:'o8',conflict:'c7'} },
-  { id:'t_horror', name:'悬疑推理', icon:'🔍', pro:false, flow:{genre:'horror',world:'w5',protagonist:'p5',outline:'o4',conflict:'c5'} },
-  { id:'t_apocalypse', name:'末世求生', icon:'🧟', pro:false, flow:{genre:'apocalypse',world:'w5',protagonist:'p1',outline:'o9',conflict:'c8'} },
-  { id:'t_campus', name:'青春校园', icon:'🎒', pro:true, flow:{genre:'campus',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6'} },
-  { id:'t_bl', name:'男男之恋', icon:'🌈', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p1',outline:'o3',conflict:'c7',romance:'bl_deep'} },
-  { id:'t_gl', name:'女女之恋', icon:'🌸', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p8',outline:'o8',conflict:'c7',romance:'gl_slow'} },
-  { id:'t_age_gap', name:'姐弟恋', icon:'⏳', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',romance:'age_younger'} },
-  { id:'t_forbidden', name:'禁忌之恋', icon:'🌹', pro:true, flow:{genre:'romance',world:'w7',protagonist:'p9',outline:'o4',conflict:'c1',romance:'forb_office'} },
-  { id:'t_heal', name:'治愈系恋爱', icon:'🫂', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',romance:'heal_love'} },
+  { id:'t_xianxia', name:'仙侠修真', icon:'🏔️', pro:false, flow:{genre:'xianxia',world:'w1',protagonist:'p2',outline:'o1',conflict:'c1',style:'s1',chapter:'ch3',pov:'pov2',setting_detail:'sd1',characters:'cr1'} },
+  { id:'t_wuxia', name:'武侠江湖', icon:'⚔️', pro:false, flow:{genre:'wuxia',world:'w6',protagonist:'p1',outline:'o6',conflict:'c3',style:'s4',chapter:'ch3',pov:'pov2',setting_detail:'sd2',characters:'cr3'} },
+  { id:'t_scifi', name:'科幻星际', icon:'🚀', pro:false, flow:{genre:'scifi',world:'w3',protagonist:'p3',outline:'o10',conflict:'c8',style:'s1',chapter:'ch4',pov:'pov3',setting_detail:'sd5',characters:'cr7'} },
+  { id:'t_urban', name:'都市异能', icon:'🏙️', pro:true, flow:{genre:'都市',world:'w4',protagonist:'p6',outline:'o7',conflict:'c4',style:'s1',chapter:'ch3',pov:'pov2',setting_detail:'sd4',characters:'cr6'} },
+  { id:'t_romance_modern', name:'甜宠言情', icon:'💝', pro:false, flow:{genre:'romance',world:'w4',protagonist:'p8',outline:'o8',conflict:'c7',style:'s8',chapter:'ch2',pov:'pov2',setting_detail:'sd4',characters:'cr4',romance:'heal_love'} },
+  { id:'t_horror', name:'悬疑推理', icon:'🔍', pro:false, flow:{genre:'horror',world:'w5',protagonist:'p5',outline:'o4',conflict:'c5',style:'s5',chapter:'ch2',pov:'pov4',setting_detail:'sd5',characters:'cr6'} },
+  { id:'t_apocalypse', name:'末世求生', icon:'🧟', pro:false, flow:{genre:'apocalypse',world:'w5',protagonist:'p1',outline:'o9',conflict:'c8',style:'s1',chapter:'ch3',pov:'pov2',setting_detail:'sd2',characters:'cr7'} },
+  { id:'t_campus', name:'青春校园', icon:'🎒', pro:true, flow:{genre:'campus',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',style:'s6',chapter:'ch2',pov:'pov1',setting_detail:'sd4',characters:'cr2'} },
+  { id:'t_bl', name:'男男之恋', icon:'🌈', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p1',outline:'o3',conflict:'c7',romance:'bl_deep',style:'s8',chapter:'ch2',pov:'pov2',setting_detail:'sd4',characters:'cr4'} },
+  { id:'t_gl', name:'女女之恋', icon:'🌸', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p8',outline:'o8',conflict:'c7',romance:'gl_slow',style:'s6',chapter:'ch2',pov:'pov2',setting_detail:'sd4',characters:'cr4'} },
+  { id:'t_age_gap', name:'姐弟恋', icon:'⏳', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',romance:'age_younger',style:'s6',chapter:'ch2',pov:'pov2',setting_detail:'sd4',characters:'cr4'} },
+  { id:'t_forbidden', name:'禁忌之恋', icon:'🌹', pro:true, flow:{genre:'romance',world:'w7',protagonist:'p9',outline:'o4',conflict:'c1',romance:'forb_office',style:'s7',chapter:'ch2',pov:'pov2',setting_detail:'sd5',characters:'cr3'} },
+  { id:'t_heal', name:'治愈系恋爱', icon:'🫂', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',romance:'heal_love',style:'s6',chapter:'ch2',pov:'pov2',setting_detail:'sd6',characters:'cr4'} },
 ];
 
 function renderQuickTemplates() {
@@ -1314,64 +1299,163 @@ function toggleProTemplates() {
   }
 }
 
-function showTemplateModal() {} // 废弃，保留避免报错
-function closeTemplateModal() {}
 
 function applyTemplate(tid) {
   const t = QUICK_TEMPLATES.find(x => x.id === tid);
   if (!t) return;
   if (t.pro && STATE.license.tier !== 'professional') { toast('🔒 此模板仅专业版可用'); return; }
   
-  // 清空现有节点
-  Object.keys(STATE.nodes).forEach(id => App.removeNode(id));
+  // 如果有现有节点，先确认是否清空
+  const existingCount = Object.keys(STATE.nodes).length;
+  if (existingCount > 0) {
+    if (!confirm('应用模板将清空当前画布，是否继续？')) return;
+  }
+  
+  // 清空
+  document.getElementById('canvas').querySelectorAll('.node').forEach(el => el.remove());
+  document.getElementById('canvas').querySelectorAll('.connection-line').forEach(el => el.remove());
+  STATE.nodes = {};
   STATE.edges = [];
   
-  // 排列配置：体裁→世界观→主角→大纲→冲突→情感→风格
-  const order = ['genre','world','protagonist','outline','conflict','romance','style'];
-  let col = 0, row = 0;
-  const W = 220, H = 180, GAP = 20;
+  // 节点层级与布局
+  const LAYERS = {
+    parallel: ['characters', 'setting_detail'],
+    main: ['genre', 'world', 'protagonist', 'outline', 'conflict'],
+    sub: ['romance'],
+    modifier: ['style', 'pov', 'chapter'],
+  };
+  const NODE_W = 240, GAP = 80;
+  const positions = [];
   
-  for (const nodeType of order) {
-    const presetId = t.flow[nodeType];
-    if (!presetId) continue;
-    const cat = STATE.presets[nodeType];
-    if (!cat) continue;
-    const preset = cat.presets.find(p => p.id === presetId);
-    if (!preset) continue;
+  // 找到所有预填的节点类型
+  const matchedTypes = [];
+  for (const layer of ['parallel', 'main', 'sub', 'modifier']) {
+    for (const nodeType of LAYERS[layer]) {
+      const presetId = t.flow[nodeType];
+      if (!presetId) continue;
+      const cat = STATE.presets[nodeType];
+      if (!cat) continue;
+      const preset = cat.presets.find(p => p.id === presetId);
+      if (!preset) continue;
+      matchedTypes.push({ nodeType, preset, layer });
+    }
+  }
+  
+  // 按层分布：并行在上，主链居中一行，情感关系在主力下方，修饰在最下
+  const layerStartY = { parallel: 60, main: 280, sub: 500, modifier: 680 };
+  
+  for (const layer of ['parallel', 'main', 'sub', 'modifier']) {
+    const items = matchedTypes.filter(m => m.layer === layer);
+    if (items.length === 0) continue;
     
-    const x = 50 + col * (W + GAP);
-    const y = 80 + row * (H + GAP);
-    const nid = App.addNode(nodeType, x, y);
-    STATE.nodes[nid].selected = preset;
+    // 主链一行展开，其他居中对齐
+    const totalW = items.length * NODE_W + (items.length - 1) * GAP;
+    const startX = layer === 'main' ? 50 : Math.max(50, (800 - totalW) / 2);
     
-    col++;
-    if (col >= 3) { col = 0; row++; }
+    items.forEach((item, i) => {
+      const x = startX + i * (NODE_W + GAP);
+      const y = layerStartY[layer];
+      const id = 'node_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+      STATE.nodes[id] = { id, type: item.nodeType, x, y, selected: item.preset, custom_text: '' };
+      positions.push({ id, nodeType: item.nodeType, layer, index: i });
+    });
+  }
+  
+  // 主链连线：体裁→世界观→主角→大纲→冲突
+  const mainNodes = positions.filter(p => p.layer === 'main');
+  for (let i = 1; i < mainNodes.length; i++) {
+    STATE.edges.push({ from: mainNodes[i-1].id, to: mainNodes[i].id });
+  }
+  
+  // 查主链节点
+  const m = (type) => { const x = mainNodes.find(p => p.nodeType === type); return x ? x.id : null; };
+  
+  // 并行→主链：角色设定→主角，细节设定→世界观
+  for (const pn of positions.filter(p => p.layer === 'parallel')) {
+    const tid = m(pn.nodeType === 'characters' ? 'protagonist' : 'world');
+    if (tid) STATE.edges.push({ from: pn.id, to: tid });
+  }
+  
+  // 情感关系→体裁
+  for (const sn of positions.filter(p => p.layer === 'sub')) {
+    const tid = m('genre');
+    if (tid) STATE.edges.push({ from: sn.id, to: tid });
+  }
+  
+  // 修饰→主链：风格→体裁，视角→主角，章节→大纲
+  const MOD_MAP = { style:'genre', pov:'protagonist', chapter:'outline' };
+  for (const mn of positions.filter(p => p.layer === 'modifier')) {
+    const tid = m(MOD_MAP[mn.nodeType] || 'genre');
+    if (tid) STATE.edges.push({ from: mn.id, to: tid });
+  }
+  
+  // 自动填入项目名称
+  document.getElementById('project-name-input').value = t.name + '小说';
+  document.getElementById('current-project-name').textContent = t.name + '小说';
+  
+  // 主角默认名字（按预设类型区分）
+  for (const [id, node] of Object.entries(STATE.nodes)) {
+    if (node.type === 'protagonist' && node.selected) {
+      const NAME_MAP = {
+        '废材逆袭型': '叶辰', '天才少年型': '林逸', '穿越者型': '张凡',
+        '重生复仇型': '萧然', '被动卷入型': '陈默', '黑化大佬型': '陆沉',
+        '系统加持型': '王浩', '女强人型': '苏晚晴', '腹黑谋士型': '秦墨',
+        '冷酷杀手型': '夜影',
+      };
+      STATE.nodes[id].char_name = NAME_MAP[node.selected.name] || '叶辰';
+      STATE.nodes[id].char_role = '主角';
+    }
   }
   
   renderAllNodes();
+  renderConnections();
+  updateEmpty();
   updateFlowIndicator();
   toast('✅ 模板已应用！点击「开始」写作');
-  closeTemplateModal();
 }
 
 function renderAllNodes() {
   const canvas = document.getElementById('canvas');
-  canvas.innerHTML = '';
+  // 只清除节点元素，保留 SVG 连线层
+  canvas.querySelectorAll('.node').forEach(el => el.remove());
   for (const [id, node] of Object.entries(STATE.nodes)) {
     const def = NODE_TYPES.find(t => t.type === node.type);
     if (!def) continue;
     const el = document.createElement('div');
-    el.className = 'flow-node';
+    el.className = 'node';
     el.id = id;
     el.style.left = node.x + 'px';
     el.style.top = node.y + 'px';
     el.style.borderColor = def.color;
+    if (node.selected) el.classList.add('done');
+
+    const headerStyle = `background: ${def.color}22`;
     el.innerHTML = `
-      <div class="flow-node-header" style="background:${def.color}">${def.icon} ${def.name}</div>
-      <div class="flow-node-body">${node.selected ? `✅ ${node.selected.name}` : '未选择'}</div>
+      <div class="node-header" style="${headerStyle}; border-bottom: 1px solid ${def.color}40">
+        <span class="node-icon">${def.icon}</span>
+        <span class="node-title">${def.name}</span>
+        <button class="btn-delete" onclick="App.removeNode('${id}')">×</button>
+      </div>
+      <div class="node-port port-in" data-node="${id}" data-port="in"></div>
+      <div class="node-port port-out" data-node="${id}" data-port="out"
+           onmousedown="startConnect(event, '${id}')"></div>
+      <div class="node-body" id="nb_${id}">
+        ${node.selected ? `<div style="padding:6px 0;color:var(--green);font-size:12px">✅ ${node.selected.name}</div>` : '<div class="node-placeholder">点击「选择」配置此节点</div>'}
+      </div>
+      <div style="padding: 0 10px 8px; display:flex; gap:6px;">
+        ${node.type !== 'custom' ? `
+        <button class="btn btn-secondary" style="flex:1;font-size:11px;padding:4px 8px" 
+                onclick="openPanel('${id}', '${node.type}')">📋 选择预设</button>
+        ` : ''}
+        <button class="btn btn-secondary" style="flex:1;font-size:11px;padding:4px 8px"
+                onclick="openCustomInput('${id}')">✏️ 自定义</button>
+      </div>
     `;
+    attachNodeDrag(el, id);
     el.ondblclick = () => openPanel(id, node.type);
     canvas.appendChild(el);
+    // 用完整渲染替换占位内容（显示预设描述+标签）
+    renderNodeContent(id);
   }
 }
 
@@ -2083,7 +2167,7 @@ function renderNode(nodeData, def) {
   el.style.left = nodeData.x + 'px';
   el.style.top = nodeData.y + 'px';
   
-  const headerStyle = `background: linear-gradient(135deg, ${def.color}33, ${def.color}15);`;
+  const headerStyle = `background: ${def.color}22`;
   
   el.innerHTML = `
     <div class="node-header" style="${headerStyle}; border-bottom: 1px solid ${def.color}40">
@@ -2097,7 +2181,7 @@ function renderNode(nodeData, def) {
     <div class="node-body" id="nb_${nodeData.id}">
       <div class="node-placeholder">点击「选择」配置此节点</div>
     </div>
-    <div style="padding: 0 14px 12px; display:flex; gap:6px;">
+    <div style="padding: 0 10px 8px; display:flex; gap:6px;">
       ${nodeData.type !== 'custom' ? `
       <button class="btn btn-secondary" style="flex:1;font-size:11px;padding:4px 8px" 
               onclick="openPanel('${nodeData.id}', '${nodeData.type}')">📋 选择预设</button>
@@ -2779,7 +2863,7 @@ function displayOutput(text) {
   // 简单的 markdown 渲染
   const html = text
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/^## (.+)$/gm, '<h2>$2</h2>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^### (.+)$/gm, '<div class="chapter-title">$1</div>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n\n/g, '</p><p style="margin:8px 0">')
