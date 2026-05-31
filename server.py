@@ -686,14 +686,12 @@ def generate_options():
     # License 检查
     lic = _get_current_license()
     
-    # 模板种类检查
-    allowed_types = lic['info'].get('template_types', ['genre'])
-    if node_type not in allowed_types:
+    # 情感关系模板仅专业版可用
+    if node_type == 'romance' and lic['tier'] != 'professional':
         return jsonify({
             'ok': False,
-            'error': f'当前版本不支持「{node_type}」模板，请升级专业版',
-            'tier': lic['tier'],
-            'allowed': allowed_types
+            'error': '情感关系模板仅专业版可用，请升级',
+            'tier': lic['tier']
         }), 403
     
     max_templates = lic['info'].get('max_template_calls', 3)
