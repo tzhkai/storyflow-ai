@@ -1048,12 +1048,26 @@ def start_writing():
 
 {style_rules}
 
-核心要求：
-1. 人物鲜活，对话自然有个性
-2. 情节紧凑，有节奏感，每个场景都有推进
-3. 充分展现世界观的独特性
-4. 确保输出完整，不要中途截断
-5. 绝不要写出"AI味"的文字——避免套话、虚词堆叠、形容词泛滥"""
+⚠️ 以下规则必须严格遵守：
+1. ⛔ 人物姓名必须严格使用设定中给出的名字，不得自行更改或创造新名字
+2. ⛔ 保持角色设定的一致性（性格、背景、关系），从头到尾不能变
+3. ⛔ 情节推进要有逻辑，不能出现设定外的突兀事件或与主线无关的任务
+4. ⛔ 每章字数控制在设定范围内，章节之间长度不能相差太大
+5. ⛔ 避免在每一章重复相同的描述和句式（如反复出现特定词汇）
+6. 人物对话要自然有个性，情节紧凑有节奏感
+7. 章节标题格式必须为「第X章」（X为中文数字），不得使用其他格式
+8. 确保输出完整，不要中途截断
+9. 绝不要写出"AI味"的文字——避免套话、虚词堆叠、形容词泛滥"""
+
+            # 构建角色名字列表
+            char_names = []
+            if protagonist.get('char_name'):
+                char_names.append(f"主角：{protagonist['char_name']}")
+            char_cfg = flow_config.get('characters', {})
+            if char_cfg.get('char_name'):
+                cn = char_cfg.get('selected', {}).get('name', '角色')
+                char_names.append(f"{cn}：{char_cfg['char_name']}")
+            char_name_text = '\n'.join(char_names) if char_names else ''
 
             user_prompt = f"""请根据以下设定创作小说：
 
@@ -1067,7 +1081,11 @@ def start_writing():
 【字数设定】每章约{flow_config.get('chapter', {}).get('word_count', 2500)}字，共{flow_config.get('chapter', {}).get('chapter_count', 30)}章
 【叙事视角】{pov.get('name', '')}：{pov.get('desc', '')}
 【细节设定】{setting_detail.get('name', '')}：{setting_detail.get('desc', '')}
+{char_name_text}
 【补充说明】{custom_notes}
+
+⚠️ 人物姓名对照（必须严格遵守，不得更改）：
+{char_name_text if char_names else '使用设定中默认的角色名'}
 
 请先写出：
 1. 小说标题（3个备选）
@@ -1185,7 +1203,11 @@ def continue_writing(task_id):
             
             instruction = data.get('instruction', '请继续写下一章')
             instruction = f"⚠️ CRITICAL: 你的输出必须以「第{cn_num}章」作为章节标题开头，使用中文数字格式。绝对不能写其他章节号。\n\n{instruction}"
-            print(f'[DEBUG] continue: chapter={next_chapter_num}({cn_num}), summaries={len(prev_summaries)}', flush=True)
+            # 如果是最后一章，追加收尾要求
+            total_ch = data.get('total_chapters', 0)
+            if total_ch > 0 and next_chapter_num >= total_ch:
+                instruction += '\n\n⚠️ 这是小说的最后一章，必须完整收尾所有主要故事线和人物关系，给出一个合理的结局。不能留坑，不能突然中断。确保故事有一个完整的收束。'
+            print(f'[DEBUG] continue: chapter={next_chapter_num}({cn_num})/{total_ch}, summaries={len(prev_summaries)}', flush=True)
             style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
 
             # 根据 anti_ai_level 决定去AI味强度
@@ -1215,8 +1237,9 @@ def continue_writing(task_id):
 1. 不要重复前面章节已出现过的场景、对话、情节
 2. 每个新场景必须有实质性的情节推进
 3. 人物的行动和对话要有新的信息量，不能是已有信息的变体
-4. 如果感觉情节陷入循环，引入新的冲突元素或外部事件打破僵局
-5. 新章节的每一段文字都要向前推进故事，不能原地打转"""
+4. 避免反复使用相同的描述词汇（如"倒计时"、"原主的记忆"、"穿书前"等）
+5. 如果感觉情节陷入循环，引入新的冲突元素或外部事件打破僵局
+6. 新章节的每一段文字都要向前推进故事，不能原地打转"""
 
             # 读取最新流程设定（允许用户修改后生效）
             flow_config = data.get('flow', {})
@@ -1237,18 +1260,22 @@ def continue_writing(task_id):
             flow_text = '\n'.join(flow_parts) if flow_parts else ''
 
             messages = [
-                {'role': 'system', 'content': f"""你是专业小说作者。请根据已有摘要继续创作。
+                {'role': 'system', 'content': f"""你是专业小说作者。请根据已有摘要继续创作下一章。
 
 {anti_ai_text}
 
 {style_rules}
 
 {anti_repeat_rules}
-创作要求：
+⚠️ 绝对规则（必须遵守）：
+- 当前要写的是「第{cn_num}章」，你的输出必须以「第{cn_num}章」作为章节标题开头
+- 严禁输出其他章节号，严禁从「第一章」重新开始
 - 保持风格一致，情节自然衔接
+- 人物姓名必须保持与已有章节一致，不得自行改名
 - 每段都要推动故事向前发展
 - 人物对话要体现人物性格的成长和变化
 - 避免使用与前文相似的句式、比喻和描写
+- 每章字数不要相差太大，保持均匀
 - 绝不要写出"AI味"的文字"""},
                 {'role': 'user', 'content': f"""【当前作品设定】
 {flow_text if flow_text else '沿用初始设定'}
@@ -1283,6 +1310,12 @@ def continue_writing(task_id):
             result = _post_process_text(result, writing_style)
             
             writing_tasks[task_id_new]['output'] = result
+            # 检查空内容
+            if not result or not result.strip():
+                writing_tasks[task_id_new]['status'] = 'error'
+                writing_tasks[task_id_new]['error'] = 'AI 返回内容为空，请重试'
+                writing_tasks[task_id_new]['progress'] = 0
+                return
             # 记录本章摘要
             summary = _extract_chapter_summary(result)
             if summary:
