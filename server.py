@@ -573,6 +573,8 @@ def call_llm(config, messages, stream=False):
         resp = requests.post(f'{base_url}/api/chat',
             json=payload, timeout=180)
         resp_json = resp.json()
+        if 'error' in resp_json:
+            raise ValueError(f"Ollama 错误: {resp_json['error']}")
         content = resp_json['message']['content']
         return content
     
@@ -593,6 +595,9 @@ def call_llm(config, messages, stream=False):
         resp = requests.post(f'{base_url}/v1/chat/completions',
             headers=headers, json=payload, timeout=180)
         resp_json = resp.json()
+        if 'error' in resp_json:
+            err = resp_json['error']
+            raise ValueError(f"LM Studio 错误: {err.get('message', err)}")
         content = resp_json['choices'][0]['message']['content']
         return content
     
@@ -613,9 +618,14 @@ def call_llm(config, messages, stream=False):
         resp = requests.post(f'{base_url}/chat/completions',
             headers=headers, json=payload, timeout=180)
         resp_json = resp.json()
+        if 'error' in resp_json:
+            err = resp_json['error']
+            raise ValueError(f"API 错误 [{resp.status_code}]: {err.get('message', err)}")
+        if 'choices' not in resp_json:
+            raise ValueError(f"API 返回异常 [{resp.status_code}]: {resp.text[:200]}")
         content = resp_json['choices'][0]['message']['content']
         return content
-    
+
     raise ValueError(f'Unknown model type: {model_type}')
 
 # ========== AI 生成选项 ==========
