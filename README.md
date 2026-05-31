@@ -27,28 +27,27 @@
 
 ## 快速开始
 
-### 1. 环境要求
-
-- Python 3.10+
-- （可选）Ollama 或 LM Studio，用于本地模型
-
-### 2. 安装
+### 一键安装（macOS）
 
 ```bash
-# 克隆仓库
 git clone https://github.com/tzhkai/storyflow-ai.git
 cd storyflow-ai
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 启动
-python server.py
+bash install.sh
 ```
 
-打开浏览器访问 **http://127.0.0.1:8505**
+脚本会自动完成：环境检测 → 安装依赖 → 启动服务 → 开机自启 → 打开写作页面。
 
-### 3. 配置 AI 模型
+**之后每次开机自动启动，无需手动操作。**
+
+```bash
+# 管理命令
+bash uninstall.sh    # 卸载
+cat server.log       # 查看日志
+```
+
+> Windows 用户：确保已安装 Python 3.10+，然后运行 `bash start.sh`
+
+### 配置 AI 模型
 
 #### 方式一：本地模型（免费）
 
