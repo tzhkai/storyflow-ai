@@ -16,14 +16,15 @@
 
 | 功能 | 免费版 | 标准版 (¥69) | 专业版 (¥189) |
 |------|--------|-------------|-------------|
-| 流程图节点 | 1 | 5 | 无限 |
-| 每日生成（自备Key） | 3 次 | 50 次 | 无限 |
+| 流程图项目 | 1 个 | 5 个 | 无限 |
+| 每日生成（自备 Key） | 3 次 | 50 次 | 无限 |
 | 每日模板生成 | 3 次 | 50 次 | 无限 |
 | 平台 API | ❌ | ✅ 100 万 Token | ✅ 500 万 Token |
-| 写作风格 | 2 种 | 4 种 | 5 种 |
+| 写作风格 | 2 种 | 4 种 | 5 种（含自定义） |
 | 去 AI 味 | 基础 | 完整 | 增强自定义 |
-| 导出格式 | txt | txt / PDF | txt / PDF / EPUB / DOCX |
-| 本地模型 | ✅ | ✅ | ✅ |
+| 导出格式 | TXT | TXT / PDF | TXT / PDF / EPUB / DOCX |
+| 可用模板类型 | 题材 | 题材 + 大纲 | **全部 12 种** |
+| 专属高级预设 | ❌ | ❌ | **16 套 + 完整情感关系系统** |
 
 ## 快速开始
 
@@ -33,6 +34,7 @@
 
 ```bash
 git clone https://github.com/tzhkai/storyflow-ai.git
+# 或国内镜像：git clone https://gitee.com/knexio/storyflow-ai.git
 cd storyflow-ai
 bash install.sh
 ```
@@ -79,15 +81,13 @@ ollama pull qwen2.5:7b
 
 > 费用由模型厂商直接收取，与 StoryFlow 无关。DeepSeek 目前最便宜，约 ¥1/百万 Token。
 
-## License 激活
+## 购买 & 激活
 
-升级标准版或专业版：
+1. 点击左下角 **🔑 购买授权**，选择版本
+2. 跳转爱发电完成付款
+3. 复制订单号，粘贴回软件点 **激活**，即时生效
 
-1. 打开软件，点击右上角的版本标识
-2. 输入购买获得的 License Key（格式 `SF-STD-xxxx` 或 `SF-PRO-xxxx`）
-3. 点击激活，即时生效
-
-> 购买地址：[爱发电 · StoryFlow](https://ifdian.net/a/knexio)（点击进入）
+> 购买地址：[爱发电 · StoryFlow](https://ifdian.net/a/knexio)
 
 ## 使用技巧
 
