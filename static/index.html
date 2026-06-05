@@ -1018,7 +1018,7 @@
       </div>
       <div class="tier-card" data-tier="professional">
         <div class="tier-name">专业版</div>
-        <div class="tier-price">¥199 <small>买断</small></div>
+        <div class="tier-price">¥189 <small>买断</small></div>
         <div class="tier-features">
           ✅ 无限流程图<br>
           ✅ 本地+云端模型<br>
@@ -3638,7 +3638,7 @@ function selectPayType(type) {
 }
 
 function updatePayBtnText() {
-  const price = payTier === 'professional' ? '99' : '29';
+  const price = payTier === 'professional' ? '189' : '69';
   document.getElementById('pay-btn').textContent = '支付 ¥' + price;
 }
 
@@ -3783,11 +3783,8 @@ init();
       <div class="pay-tier">
         <label id="pay-tier-standard" class="selected" onclick="selectPayTier('standard')">
           <div class="name">标准版</div>
-          <div class="price">¥29 <small>买断</small></div>
-        </label>
-        <label id="pay-tier-professional" onclick="selectPayTier('professional')">
-          <div class="name">专业版</div>
-          <div class="price">¥99 <small>买断</small></div>
+          <div class="price">¥69 <small>买断</small></div>
+          <div class="price">¥189 <small>买断</small></div>
         </label>
       </div>
       <div class="pay-tier-label" style="margin-top:4px">支付方式</div>
@@ -3799,7 +3796,7 @@ init();
           <div class="name" style="font-size:13px">微信支付</div>
         </label>
       </div>
-      <button class="pay-btn" id="pay-btn" onclick="startPayment()">支付 ¥29</button>
+      <button class="pay-btn" id="pay-btn" onclick="startPayment()">支付 ¥69</button>
       <div class="pay-footer">
         <button onclick="closePaymentModal()">取消</button>
       </div>

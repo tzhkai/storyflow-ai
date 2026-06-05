@@ -261,8 +261,8 @@ function bufToHex(buf) {
 }
 
 const PRICES = {
-  standard: { amount: '29.00', label: '标准版' },
-  professional: { amount: '99.00', label: '专业版' },
+  standard: { amount: '69.00', label: '标准版' },
+  professional: { amount: '189.00', label: '专业版' },
 };
 
 const TIER_FEATURES = {

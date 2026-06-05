@@ -39,6 +39,6 @@ PAYMENT_RETURN_URL = os.environ.get('SF_PAYMENT_RETURN_URL', 'http://127.0.0.1:8
 
 # ─── 定价 ───
 PRICES = {
-    'standard': {'amount': '29.00', 'label': '标准版'},
-    'professional': {'amount': '99.00', 'label': '专业版'},
+    'standard': {'amount': '69.00', 'label': '标准版'},
+    'professional': {'amount': '189.00', 'label': '专业版'},
 }
