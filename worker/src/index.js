@@ -23,17 +23,23 @@ export default {
       const routes = {
         '/api/health': () => json({ ok: true, version: '1.0' }),
         '/api/v1/chat': () => handleChat(request, env),
+        '/api/v1/chat/completions': () => handleChat(request, env),
         '/api/v1/license/sign': () => handleLicenseSign(request, env),
         '/api/v1/license/verify': () => handleLicenseVerify(request, env),
+        '/api/v1/afdian/activate': () => handleAfdianActivate(request, env),
         '/api/v1/payment/create-order': () => handleCreateOrder(request, env, url),
         '/api/v1/payment/callback': () => handlePaymentCallback(request, env),
         '/api/v1/payment/check-order': () => handleCheckOrder(request, env),
+        '/api/v1/afdian/webhook': () => handleAfdianWebhook(request, env),
+        '/api/v1/afdian/key': () => handleAfdianQuery(request, env),
+        '/claim': () => handleClaimPage(request, env),
+        '/claim/': () => handleClaimPage(request, env),
       };
 
       const handler = routes[path];
       if (!handler) return json({ error: 'Not Found' }, 404);
 
-      if (request.method !== 'POST' && path !== '/api/health') {
+      if (request.method !== 'POST' && path !== '/api/health' && path !== '/api/v1/afdian/key' && path !== '/claim' && path !== '/claim/') {
         return json({ error: 'Method Not Allowed' }, 405);
       }
 
@@ -218,9 +224,90 @@ async function handlePaymentCallback(request, env) {
 
 // ─── 订单查询 ───
 async function handleCheckOrder(request, env) {
-  // 无 KV 时无法持久化订单状态
-  // 建议用户联系客服手动激活
   return json({ error: '订单查询需要配置 KV 存储，请联系管理员' }, 501);
+}
+
+// ─── 爱发电 Webhook ───
+async function handleAfdianWebhook(request, env) {
+  const body = await request.json();
+
+  if (body.ec !== 200 || !body.data || body.data.type !== 'order') {
+    return json({ ec: 200, em: 'ignored' });
+  }
+
+  const order = body.data.order;
+  if (order.status !== 2) {
+    return json({ ec: 200, em: 'not paid' });
+  }
+
+  const outTradeNo = order.out_trade_no;
+  const userName = order.user_name || '未知用户';
+  const planTitle = order.plan_title || '未知方案';
+  const amount = parseFloat(order.total_amount);
+
+  const existing = await env.STORE.get(`afdian:${outTradeNo}`);
+  if (existing) {
+    return json({ ec: 200, em: 'ok', key: JSON.parse(existing).key });
+  }
+
+  let tier = 'standard';
+  if (amount >= 189) tier = 'professional';
+  else if (amount < 69) return json({ ec: 200, em: 'unknown tier' });
+
+  const tierCN = tier === 'professional' ? '专业版' : '标准版';
+  const tierCode = tier === 'standard' ? 'STD' : 'PRO';
+  const randomPart = crypto.randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase();
+  const keyData = `${tier}-${randomPart}`;
+  const sig = await hmacSign(env.LICENSE_SECRET, keyData);
+  const licenseKey = `SF-${tierCode}-${randomPart}-${sig}`;
+
+  await env.STORE.put(`afdian:${outTradeNo}`, JSON.stringify({
+    key: licenseKey, tier, out_trade_no: outTradeNo, created_at: Date.now()
+  }));
+
+  // Telegram 通知
+  const botToken = env.TG_BOT_TOKEN;
+  const chatId = env.TG_CHAT_ID || '1072902323';
+  if (botToken) {
+    const msg = encodeURIComponent(
+      `🛒 新订单\n━━━━━━━━━━━━\n👤 ${userName}\n📦 ${planTitle} (${tierCN})\n💰 ¥${amount}\n🆔 ${outTradeNo}\n🔑 ${licenseKey}`
+    );
+    try {
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage?chat_id=${chatId}&text=${msg}`, { method: 'GET' });
+    } catch (_) {}
+  }
+
+  return json({ ec: 200, em: 'ok', key: licenseKey, tier });
+}
+
+// ─── 爱发电 Key 查询 ───
+async function handleAfdianQuery(request, env) {
+  const url = new URL(request.url);
+  const outTradeNo = url.searchParams.get('out_trade_no');
+  if (!outTradeNo) return json({ error: '缺少 out_trade_no' }, 400);
+
+  const record = await env.STORE.get(`afdian:${outTradeNo}`);
+  if (!record) return json({ error: '未找到' }, 404);
+
+  return json(JSON.parse(record));
+}
+
+// ─── 爱发电订单激活验证 ───
+async function handleAfdianActivate(request, env) {
+  const body = await request.json();
+  const orderId = (body.order_id || '').trim();
+  if (!orderId) return json({ ok: false, error: '缺少订单号' });
+
+  const record = await env.STORE.get(`afdian:${orderId}`);
+  if (!record) return json({ ok: false, error: '订单号无效' });
+
+  const data = JSON.parse(record);
+  return json({
+    ok: true,
+    key: data.key,
+    tier: data.tier,
+    info: TIER_FEATURES[data.tier],
+  });
 }
 
 // ─── HMAC-SHA256 签名 ───
@@ -232,6 +319,75 @@ async function hmacSign(secret, data) {
   );
   const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(data));
   return bufToHex(sigBytes).slice(0, 24).toUpperCase();
+}
+
+// ─── 自助领取页面 ───
+async function handleClaimPage(request, env) {
+  const url = new URL(request.url);
+  const orderId = url.searchParams.get('order_id') || '';
+
+  let key = null;
+  let tier = null;
+  let found = false;
+  let error = '';
+
+  if (orderId) {
+    const record = await env.STORE.get(`afdian:${orderId}`);
+    if (record) {
+      const data = JSON.parse(record);
+      key = data.key;
+      tier = data.tier === 'professional' ? '专业版' : '标准版';
+      found = true;
+    } else {
+      error = '未找到该订单的 Key，请确认订单号正确';
+    }
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StoryFlow - 领取授权码</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#121218;color:#e8e8ed;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.box{background:#1a1a26;border:1px solid #2a2a3a;border-radius:16px;padding:40px;width:420px;max-width:90vw;text-align:center}
+h1{font-size:22px;margin-bottom:6px}
+.sub{color:#888;font-size:13px;margin-bottom:24px}
+input{width:100%;padding:12px 16px;border-radius:10px;border:1px solid #2a2a3a;background:#121218;color:#e8e8ed;font-size:15px;outline:none;margin-bottom:12px}
+input:focus{border-color:#6c5ce7}
+.btn{width:100%;padding:12px;border-radius:10px;border:none;background:#6c5ce7;color:#fff;font-size:15px;cursor:pointer;transition:.15s}
+.btn:hover{background:#5a4bd1}
+.key-box{background:#0d0d15;border:1px solid #2a2a3a;border-radius:10px;padding:16px;margin-top:16px;word-break:break-all;font-family:monospace;font-size:14px}
+.tier-badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;margin-top:12px}
+.tier-badge.standard{background:#10b98120;color:#10b981;border:1px solid #10b98140}
+.tier-badge.professional{background:#f59e0b20;color:#f59e0b;border:1px solid #f59e0b40}
+.error{color:#ef4444;font-size:13px;margin-top:8px}
+.copy-btn{background:#2a2a3a;color:#e8e8ed;border:1px solid #3a3a4a;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;margin-top:12px;transition:.15s}
+.copy-btn:hover{background:#3a3a4a}
+.help{font-size:12px;color:#666;margin-top:20px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="box">
+<h1>🔑 StoryFlow</h1>
+<p class="sub">输入爱发电订单号领取授权码</p>
+<form method="get" action="/claim">
+<input type="text" name="order_id" placeholder="请输入订单号" value="${orderId}" required>
+<button class="btn" type="submit">查询授权码</button>
+</form>
+${found ? `
+<div class="key-box">${key}</div>
+<div class="tier-badge ${tier === '专业版' ? 'professional' : 'standard'}">${tier}</div>
+<button class="copy-btn" onclick="navigator.clipboard.writeText('${key}').then(()=>this.textContent='已复制！').catch(()=>{})">复制授权码</button>
+` : ''}
+${error ? `<div class="error">${error}</div>` : ''}
+<div class="help">订单号可在爱发电 → 我的 → 购买记录 中找到</div>
+</div>
+</body>
+</html>`;
+  return new Response(html, {
+    headers: { 'Content-Type': 'text/html;charset=utf-8' },
+  });
 }
 
 // ─── 工具函数 ───

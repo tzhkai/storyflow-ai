@@ -54,9 +54,24 @@ def get_license():
 @app.route('/api/license/activate', methods=['POST'])
 def activate_license_api():
     data = request.json or {}
+    order_id = data.get('order_id', '').strip()
     key = data.get('key', '').strip().upper()
+    if order_id:
+        import requests
+        verify_url = 'https://api.knexio.xyz/api/v1/afdian/activate'
+        try:
+            r = requests.post(verify_url, json={'order_id': order_id}, timeout=10)
+            rd = r.json()
+            if rd.get('ok'):
+                from storyflow.storage import save_json
+                from storyflow.license import LICENSE_FILE
+                save_json(LICENSE_FILE, {'key': order_id, 'activated_at': __import__('time').time(), 'tier': rd['tier']})
+                return jsonify({'ok': True, 'tier': rd['tier'], 'info': rd['info'], 'message': f"已激活 {rd['info']['name']}！"})
+            return jsonify({'ok': False, 'error': rd.get('error', '订单号无效')}), 400
+        except Exception as e:
+            return jsonify({'ok': False, 'error': f'验证服务不可达: {e}'}), 503
     if not key:
-        return jsonify({'ok': False, 'error': '请输入 License Key'}), 400
+        return jsonify({'ok': False, 'error': '请输入 License Key 或订单号'}), 400
     result = activate_license(key)
     if not result.get('ok'):
         return jsonify(result), 400
@@ -225,7 +240,7 @@ def generate_options():
         remaining = get_remaining_tokens(lic)
         if remaining <= 0:
             return jsonify({'ok': False, 'error': '平台 API Token 已用完'}), 403
-        mc = {'type': 'deepseek', 'api_key': PLATFORM_API_KEY, 'base_url': 'https://api.deepseek.com/v1', 'model': PLATFORM_API_MODEL}
+        mc = {'type': 'deepseek', 'api_key': 'proxy', 'base_url': 'https://api.knexio.xyz/api/v1', 'model': PLATFORM_API_MODEL}
 
     prompts = {
         'genre': f"请为一部小说生成{count}个独特的体裁/类型设定方向，以JSON数组返回，每个包含：name(名称), desc(50字描述), tags(3个关键词数组)。只返回JSON，不要其他文字。",
@@ -291,7 +306,7 @@ def start_writing():
         remaining = get_remaining_tokens(lic)
         if remaining <= 0:
             return jsonify({'error': '平台 API Token 已用完，请使用自己的 Key 或升级', 'tier': lic['tier']}), 403
-        model_config = {'type': 'deepseek', 'api_key': PLATFORM_API_KEY, 'base_url': 'https://api.deepseek.com/v1', 'model': PLATFORM_API_MODEL}
+        model_config = {'type': 'deepseek', 'api_key': 'proxy', 'base_url': 'https://api.knexio.xyz/api/v1', 'model': PLATFORM_API_MODEL}
 
     daily_count = get_daily_gen_count()
     max_gen = lic['info'].get('max_daily_generations', 3)
@@ -443,7 +458,7 @@ def continue_writing(task_id):
                     writing_tasks[task_id_new]['status'] = 'error'
                     writing_tasks[task_id_new]['error'] = '平台 API Token 已用完，请使用自己的 Key 或升级'
                     return
-                nonlocal_model_config = {'type': 'deepseek', 'api_key': PLATFORM_API_KEY, 'base_url': 'https://api.deepseek.com/v1', 'model': PLATFORM_API_MODEL}
+                nonlocal_model_config = {'type': 'deepseek', 'api_key': 'proxy', 'base_url': 'https://api.knexio.xyz/api/v1', 'model': PLATFORM_API_MODEL}
 
             lic_cont = get_current_license()
             writing_style = data.get('writing_style', 'literary')
