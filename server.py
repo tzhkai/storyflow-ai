@@ -1,268 +1,42 @@
 """
-AI Novel Writing Platform - Backend Server
-Port: 8505
+AI Novel Writing Platform - StoryFlow
+端口: 8505
+重构版：模块化结构，所有密钥从 .env 读取
 """
-# ========== 启动检查：缺依赖直接提示 ==========
 import sys
-
-_missing = []
-try:
-    from flask import Flask, request, jsonify, send_from_directory
-except ImportError:
-    _missing.append('flask')
-
-try:
-    import flask_cors
-except ImportError:
-    _missing.append('flask-cors')
-
-try:
-    import requests
-except ImportError:
-    _missing.append('requests')
-
-if _missing:
-    print("\n" + "="*50)
-    print("❌ 缺少依赖：", ', '.join(_missing))
-    print("请在终端运行：")
-    print(f"  {sys.executable} -m pip install " + ' '.join(_missing))
-    print("="*50 + "\n")
-    sys.exit(1)
-
-# ========== 正式导入 ==========
-from flask import Flask, request, jsonify, send_from_directory, Response
-from flask_cors import CORS
 import json
 import os
-import hashlib
-import base64
-from cryptography.fernet import Fernet
-import hmac
-import requests
-import threading
 import time
 import uuid
-import re as _re
+import re
+import threading
 from pathlib import Path
-app = Flask(__name__, static_folder='static')
+
+from flask import Flask, request, jsonify, send_from_directory, Response
+from flask_cors import CORS
+
+from storyflow.config import ACCESS_TOKEN, STATIC_DIR, PRICES, PLATFORM_API_KEY, PLATFORM_API_MODEL, PAYMENT_NOTIFY_URL, PAYMENT_RETURN_URL
+from storyflow.storage import load_json, save_json, PROJECTS_FILE, CUSTOM_TEMPLATES_FILE, get_daily_gen_count, increment_daily_gen_count, get_remaining_platform_tokens, consume_platform_tokens
+from storyflow.license import TIER_FEATURES, verify_license, get_current_license, get_license_token_id, get_remaining_tokens, PRO_ONLY_TYPES, activate_license, deactivate_license, get_features
+from storyflow.ai_service import call_llm, auto_continue, post_process_text, is_sentence_complete, extract_chapter_summary, ANTI_AI_PROMPT, STYLE_RULES
+from storyflow.payment_service import create_order, handle_callback, check_order
+from storyflow.export_service import generate_txt, generate_docx, generate_epub
+from storyflow.presets_data import BUILTIN_PRESETS
+
+app = Flask(__name__, static_folder=str(STATIC_DIR))
 CORS(app)
 
-# ========== 文件操作锁（防止并发读写竞争） ==========
-_file_lock = threading.Lock()
-
-# ========== 数据存储 ==========
-DATA_DIR = Path(__file__).parent / 'data'
-DATA_DIR.mkdir(exist_ok=True)
-PROJECTS_FILE = DATA_DIR / 'projects.json'
-PRESETS_FILE = DATA_DIR / 'presets.json'
-CUSTOM_TEMPLATES_FILE = DATA_DIR / 'custom_templates.json'
-
-# ========== License 机制 ==========
-# 加载本地 .env（不上传 GitHub）
-_env_file = Path(__file__).parent / '.env'
-if _env_file.exists():
-    with open(_env_file) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                k, v = line.split('=', 1)
-                os.environ.setdefault(k.strip(), v.strip())
-# 签名密钥（生产环境应从环境变量读取，此处为演示用）
-_LICENSE_SECRET = b'storyflow-license-secret-2026'
-
-# ========== 平台 API（从加密文件或环境变量读取） ==========
-def _load_platform_key():
-    """从加密文件或环境变量加载平台 API Key"""
-    enc_path = Path(__file__).parent / 'platform_key.bin'
-    if enc_path.exists():
-        try:
-            raw = hashlib.sha256(
-                _kfrag_1() + b"||" + _kfrag_2() + b"||" + _kfrag_3() + b"||" + _kfrag_4()
-            ).digest()
-            f = Fernet(base64.urlsafe_b64encode(raw))
-            return f.decrypt(enc_path.read_bytes()).decode()
-        except Exception:
-            pass  # fallback to env var
-    return os.environ.get('SF_PLATFORM_KEY', '')
-
-PLATFORM_API_KEY = _load_platform_key()
-PLATFORM_API_MODEL = os.environ.get('SF_PLATFORM_MODEL', 'deepseek-v4-flash')
-LICENSE_FILE = DATA_DIR / 'license.json'
-
-# ========== 模板类型中文名 ==========
 NODE_TYPE_LABELS = {
-    'genre': '题材设定',
-    'world': '世界观设定',
-    'protagonist': '主角设定',
-    'outline': '故事大纲',
-    'conflict': '冲突设定',
-    'style': '写作风格',
-    'setting_detail': '细节设定',
-    'romance': '情感关系',
-    'chapter': '章节设定',
-    'characters': '角色设定',
-    'pov': '叙事视角',
-    'custom': '自定义模板',
+    'genre': '题材设定', 'world': '世界观设定', 'protagonist': '主角设定',
+    'outline': '故事大纲', 'conflict': '冲突设定', 'style': '写作风格',
+    'setting_detail': '细节设定', 'romance': '情感关系', 'chapter': '章节设定',
+    'characters': '角色设定', 'pov': '叙事视角', 'custom': '自定义模板',
 }
+
 def _node_type_label(t):
     return NODE_TYPE_LABELS.get(t, t)
 
-# ========== 功能分级定义 ==========
-TIER_FEATURES = {
-    'free': {
-        'name': '免费版',
-        'max_flows': 1,
-        'max_daily_generations': 3,
-        'export_formats': ['txt'],
-        'writing_styles': ['literary', 'colloquial'],
-        'anti_ai_level': 'basic',
-        'max_template_calls': 3,
-        'template_types': ['genre'],
-    },
-    'standard': {
-        'name': '标准版',
-        'max_flows': 5,
-        'max_daily_generations': 50,
-        'export_formats': ['txt', 'pdf'],
-        'writing_styles': ['literary', 'colloquial', 'hardcore', 'poetic'],
-        'anti_ai_level': 'full',
-        'platform_api': True,
-        'platform_api_tokens': 1000000,
-        'max_template_calls': 50,
-        'template_types': ['genre', 'outline'],
-    },
-    'professional': {
-        'name': '专业版',
-        'max_flows': 999,
-        'max_daily_generations': 999,
-        'export_formats': ['txt', 'pdf', 'epub', 'docx'],
-        'writing_styles': ['literary', 'colloquial', 'hardcore', 'poetic', 'custom'],
-        'anti_ai_level': 'custom',
-        'platform_api': True,
-        'platform_api_tokens': 5000000,
-        'max_template_calls': 999,
-        'template_types': ['genre', 'world', 'protagonist', 'outline', 'conflict', 'style', 'setting_detail', 'romance', 'chapter', 'characters', 'pov', 'custom'],
-    },
-}
-
-# KEY FRAGMENT 1/4 (分散在代码各处以增加逆向难度)
-def _kfrag_1():
-    return b"sf-enc-storyflow"
-
-def _sign_key(key_data: str) -> str:
-    """HMAC-SHA256 签名"""
-    return hmac.new(_LICENSE_SECRET, key_data.encode('utf-8'), hashlib.sha256).hexdigest()[:24]
-
-def _verify_license(license_key: str) -> dict:
-    """验证 License Key，返回 {valid, tier, info}"""
-    try:
-        # Key 格式: SF-{tier_code}-{random}-{signature}
-        # tier_code: STD=standard, PRO=professional
-        parts = license_key.upper().split('-')
-        if len(parts) != 4 or parts[0] != 'SF':
-            return {'valid': False, 'error': '格式错误，正确格式: SF-XXX-XXXX-XXXX'}
-        
-        _, tier_code, random_part, signature = parts
-        
-        # 简码映射
-        CODE_TO_TIER = {'STD': 'standard', 'PRO': 'professional'}
-        if tier_code not in CODE_TO_TIER:
-            return {'valid': False, 'error': '无效的版本类型'}
-        
-        tier = CODE_TO_TIER[tier_code]
-        
-        # 验证签名（签名时用 tier 全名 + random）
-        expected_sig = _sign_key(f"{tier}-{random_part}")
-        if not hmac.compare_digest(signature, expected_sig.upper()):
-            return {'valid': False, 'error': '签名验证失败，Key 无效'}
-        
-        return {
-            'valid': True,
-            'tier': tier,
-            'info': TIER_FEATURES[tier]
-        }
-    except Exception as e:
-        return {'valid': False, 'error': str(e)}
-
-def _get_current_license() -> dict:
-    """获取当前激活的 License 信息"""
-    saved = load_json(LICENSE_FILE, {})
-    if not saved.get('key'):
-        return {'tier': 'free', 'info': TIER_FEATURES['free']}
-
-    result = _verify_license(saved['key'])
-    if result.get('valid'):
-        return {'tier': result['tier'], 'info': result['info'], 'key': saved['key']}
-
-    # Key 失效，回退到免费版
-    return {'tier': 'free', 'info': TIER_FEATURES['free']}
-
-def _get_daily_gen_count() -> int:
-    """获取今日生成次数"""
-    today = time.strftime('%Y-%m-%d')
-    count_file = DATA_DIR / f'gen_count_{today}.json'
-    data = load_json(count_file, {'count': 0})
-    return data.get('count', 0)
-
-# KEY FRAGMENT 2/4
-def _kfrag_2():
-    return b"2026-platform-key"
-
-def _increment_daily_gen_count():
-    """增加今日生成次数"""
-    today = time.strftime('%Y-%m-%d')
-    count_file = DATA_DIR / f'gen_count_{today}.json'
-    data = load_json(count_file, {'count': 0})
-    data['count'] = data.get('count', 0) + 1
-    save_json(count_file, data)
-
-# ========== 平台 API Token 追踪 ==========
-TOKEN_USAGE_FILE = DATA_DIR / 'platform_tokens.json'
-
-def _get_platform_token_usage():
-    return load_json(TOKEN_USAGE_FILE, {})
-
-def _get_license_token_id():
-    saved = load_json(LICENSE_FILE, {})
-    key = saved.get('key', 'free')
-    return hashlib.sha256(key.encode()).hexdigest()[:16]
-
-def _get_remaining_platform_tokens():
-    lic = _get_current_license()
-    total = lic['info'].get('platform_api_tokens', 0)
-    if total == 0:
-        return 0
-    usage = _get_platform_token_usage()
-    lid = _get_license_token_id()
-    used = usage.get(lid, 0)
-    return max(0, total - used)
-
-def _consume_platform_tokens(n):
-    usage = _get_platform_token_usage()
-    lid = _get_license_token_id()
-    usage[lid] = usage.get(lid, 0) + n
-    save_json(TOKEN_USAGE_FILE, usage)
-
-def load_json(path, default):
-    with _file_lock:
-        if path.exists():
-            try:
-                return json.loads(path.read_text(encoding='utf-8'))
-            except:
-                return default
-        return default
-
-def save_json(path, data):
-    with _file_lock:
-        # 原子写入：先写临时文件再重命名
-        tmp = path.with_suffix('.tmp')
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
-        tmp.replace(path)
-
-# ========== API 认证（可选，通过环境变量 SF_ACCESS_TOKEN 启用） ==========
-ACCESS_TOKEN = os.environ.get('SF_ACCESS_TOKEN', '')
-
-# API 认证拦截器（对所有 /api/ 路径生效）
+# ========== API 认证 ==========
 @app.before_request
 def _check_api_auth():
     if ACCESS_TOKEN and request.path.startswith('/api/'):
@@ -273,268 +47,52 @@ def _check_api_auth():
 # ========== License API ==========
 @app.route('/api/license', methods=['GET'])
 def get_license():
-    """获取当前 License 状态"""
-    lic = _get_current_license()
-    daily_count = _get_daily_gen_count()
-    lic['daily_generations'] = daily_count
+    lic = get_current_license()
+    lic['daily_generations'] = get_daily_gen_count()
     return jsonify(lic)
 
 @app.route('/api/license/activate', methods=['POST'])
-def activate_license():
-    """激活 License Key"""
+def activate_license_api():
     data = request.json or {}
     key = data.get('key', '').strip().upper()
-
     if not key:
         return jsonify({'ok': False, 'error': '请输入 License Key'}), 400
+    result = activate_license(key)
+    if not result.get('ok'):
+        return jsonify(result), 400
+    return jsonify(result)
 
-    result = _verify_license(key)
-    if not result.get('valid'):
-        return jsonify({'ok': False, 'error': result.get('error', '无效的 Key')}), 400
-
-    # 保存
-    save_json(LICENSE_FILE, {'key': key, 'activated_at': time.time(), 'tier': result['tier']})
-
-    return jsonify({
-        'ok': True,
-        'tier': result['tier'],
-        'info': result['info'],
-        'message': f"🎉 已激活 {result['info']['name']}！"
-    })
 @app.route('/api/license/deactivate', methods=['POST'])
-def deactivate_license():
-    """取消激活"""
-    save_json(LICENSE_FILE, {})
+def deactivate_license_api():
+    deactivate_license()
     return jsonify({'ok': True, 'message': '已退回免费版'})
 
 @app.route('/api/license/features', methods=['GET'])
-def get_features():
-    """获取功能权限列表（前端用来控制 UI 锁）"""
-    lic = _get_current_license()
-    info = dict(lic['info'])
-    if info.get('platform_api_tokens', 0) > 0:
-        remaining = _get_remaining_platform_tokens()
-        info['platform_tokens_remaining'] = remaining
-        info['platform_tokens_total'] = lic['info']['platform_api_tokens']
-    return jsonify({
-        'tier': lic['tier'],
-        'features': info,
-    })
-
-# ========== 预设数据 ==========
-BUILTIN_PRESETS = {
-    "genre": {
-        "name": "体裁设定",
-        "icon": "📚",
-        "color": "#6366f1",
-        "presets": [
-            {"id": "xianxia", "name": "仙侠修真", "desc": "以道家修炼体系为核心，历经炼气结丹元婴等境界，追求长生飞升。仙门林立，秘境遍地，正魔争斗贯穿始终。", "tags": ["修炼", "丹药", "飞剑", "宗门"]},
-            {"id": "xuanhuan", "name": "玄幻奇幻", "desc": "完全虚构的异世界，拥有独特的魔法或灵力体系。种族繁多，力量层次分明，主角在远古遗迹和惊天阴谋中展开冒险。", "tags": ["异能", "灵力", "神兽", "宝物"]},
-            {"id": "wuxia", "name": "武侠江湖", "desc": "古代江湖世界，武功体系为核心。门派林立、秘籍纷争、恩怨情仇交织，忠义与情义的抉择贯穿始终。", "tags": ["武功", "门派", "镖局", "江湖"]},
-            {"id": "都市", "name": "都市异能", "desc": "将超自然力量融入现代都市，主角使用异能化解危机同时隐藏身份。系统流、鉴宝流、医术流的常见载体。", "tags": ["隐藏身份", "双面人生", "系统", "觉醒"]},
-            {"id": "scifi", "name": "科幻星际", "desc": "以未来科技和星际文明为舞台，人类扩张至多个星系，AI、基因改造、星际战争成为日常。科技与人性的碰撞。", "tags": ["飞船", "AI", "星际战争", "外星文明"]},
-            {"id": "romance", "name": "言情爱情", "desc": "以人物情感关系为主线，从相遇相知到相爱，涵盖甜宠虐恋豪门先婚后爱等多种模式。注重情感张力。", "tags": ["虐恋", "甜宠", "豪门", "重生"]},
-            {"id": "history", "name": "历史穿越", "desc": "主角穿越到古代，利用现代知识改变历史进程。权谋争斗、战争谋略与科技革新交织，降维打击式的爽快体验。", "tags": ["穿越", "宫廷", "权谋", "历史"]},
-            {"id": "horror", "name": "悬疑惊悚", "desc": "以解谜和制造紧张气氛为核心，逻辑推理与氛围渲染并重。线索层层铺设，真相在最后一刻反转。", "tags": ["推理", "悬疑", "恐怖", "诡异"]},
-            {"id": "game", "name": "游戏竞技", "desc": "以电子竞技或虚拟游戏世界为舞台，团队配合与技术策略并重。游戏内热血战斗与游戏外现实生活双线并行。", "tags": ["VR游戏", "网游", "电竞", "系统"]},
-            {"id": "apocalypse", "name": "末世求生", "desc": "文明崩塌，幸存者在废土中挣扎求生。物资匮乏、人性考验、弱肉强食，主角带领队伍在绝望中寻找重建的希望。", "tags": ["丧尸", "变异", "求生", "基地"]},
-            {"id": "campus", "name": "青春校园", "desc": "以校园为背景的青春成长故事，聚焦友情爱情和梦想。清新自然的叙事，细腻描绘青春期的心动与成长。", "tags": ["学霸", "暗恋", "社团", "高考"]},
-            {"id": "rebirth", "pro": True, "name": "重生逆袭", "desc": "带着前世记忆重生回到人生关键节点，利用先知优势改变命运。弥补遗憾、报复仇人，一步步走上人生巅峰。", "tags": ["重生", "逆袭", "打脸", "复仇"]},
-            {"id": "farming", "name": "种田文", "desc": "节奏舒缓的田园生活，主角靠种地养殖经商发家致富。慢节奏的日常经营，邻里关系和家庭温暖带来治愈感。", "tags": ["种地", "经营", "美食", "田园"]},
-            {"id": "system", "name": "系统流", "desc": "主角绑定神秘系统，通过完成任务签到升级获取奖励。节奏明快，爽点密集，每一步成长都有量化反馈。", "tags": ["系统", "签到", "奖励", "升级"]},
-            {"id": "infinite", "pro": True, "name": "无限流", "desc": "主角被拉入由无数副本构成的空间，必须在各类场景中完成任务才能生存。积分兑换、团队协作，穿梭不同世界斗智斗勇。", "tags": ["副本", "任务", "积分", "队伍"]},
-            {"id": "female_lead", "pro": True, "name": "女频甜宠", "desc": "以女性视角展开的甜蜜爱情，女主独立聪慧，男主霸道专一。从偶然相遇到命中注定，甜蜜互动撩人心弦。", "tags": ["霸总", "甜宠", "腹黑", "婚后"]},
-        ]
-    },
-    "world": {
-        "name": "世界观设定",
-        "icon": "🌍",
-        "color": "#0ea5e9",
-        "presets": [
-            {"id": "w1", "name": "东方大陆", "desc": "以东方文化为基底的修炼世界，王朝与仙门并存，灵气充沛，境界体系完善。天庭地府各司其职，秘境中埋藏着上古秘密。", "tags": ["修炼", "宗门", "灵气", "大陆"]},
-            {"id": "w2", "name": "西方魔幻世界", "desc": "中世纪欧洲风格的魔法世界，精灵矮人龙族等多个种族共存。光明教廷与黑暗势力对峙，预言和诅咒在暗处发酵。", "tags": ["魔法", "种族", "神明", "骑士"]},
-            {"id": "w3", "name": "未来星际文明", "desc": "公元3000年后人类已扩张至银河系，曲速引擎和能量护盾普及。星际贸易、殖民争端、外星文明接触成为日常。", "tags": ["科技", "星际", "帝国", "联邦"]},
-            {"id": "w4", "name": "现代地球", "desc": "表面与真实世界无异，但暗中潜藏超自然势力和异能组织。政府设秘密部门管理异常事件，两种世界的边界正在模糊。", "tags": ["现代", "隐藏力量", "双层世界", "都市"]},
-            {"id": "w5", "name": "末世荒土", "desc": "文明崩塌后的残酷世界，城市沦为废墟，幸存者聚集在据点中挣扎求生。变异生物横行，物资争夺成为日常。", "tags": ["末世", "废土", "幸存", "变异"]},
-            {"id": "w6", "name": "架空古代中国", "desc": "仿宋明的架空王朝，有完整的科举制度和官僚体系。皇权宦官江湖势力多方角力，世家门阀操控朝堂风向。", "tags": ["架空", "宫廷", "江湖", "权谋"]},
-            {"id": "w7", "pro": True, "name": "赛博朋克都市", "desc": "2087年巨型都市，企业统治一切，贫富极度分化。义体改造和神经接入普及，黑客与企业AI在网络空间斗智。", "tags": ["赛博", "企业", "黑客", "改造"]},
-            {"id": "w8", "name": "诸天万界", "desc": "宇宙中有无数位面和世界，每个都有独特的法则。修士修炼穿梭位面的能力，在不同世界旅行历练获取资源。", "tags": ["位面", "穿越", "法则", "无限"]},
-            {"id": "w9", "name": "剑与魔法学院", "desc": "大陆顶尖魔法学院，各国天才汇聚。派系纷争、禁术研究、学院竞赛等多条线索并行，地下藏着不为人知的秘密。", "tags": ["学院", "魔法", "天才", "预言"]},
-            {"id": "w10", "pro": True, "name": "海洋世界", "desc": "陆地被淹没，人类在零星岛屿和水下城市生存。航海技术发达，深海有远古神兽和失落文明遗迹，海盗与领主各据一方。", "tags": ["海洋", "岛屿", "航海", "深海"]},
-        ]
-    },
-    "protagonist": {
-        "name": "主角设定",
-        "icon": "🦸",
-        "color": "#10b981",
-        "presets": [
-            {"id": "p1", "name": "废材逆袭型", "desc": "出身卑微或天赋被封印，受尽欺辱后获得奇遇。从最底层一步步攀登，每次突破都伴随着打脸震慑，带来极致的逆袭爽感。", "tags": ["废材", "觉醒", "逆袭", "天赋隐藏"]},
-            {"id": "p2", "name": "天才少年型", "desc": "出身世家天赋异禀，但光环背后是巨大压力。同辈嫉妒、长辈考验、强敌接踵，需要突破自身瓶颈和局限。", "tags": ["天才", "世家", "少年", "压力"]},
-            {"id": "p3", "name": "穿越者型", "desc": "从现代穿越到古代或异世界，携带现代知识和思维方式。用超越时代的见识降维打击，现代与古代的碰撞产生奇妙效果。", "tags": ["穿越", "现代知识", "降维打击", "适应"]},
-            {"id": "p4", "name": "重生复仇型", "desc": "前世含恨而终，重生回到命运转折点。精心策划复仇计划，前世仇人一个不放，同时面对改变历史带来的蝴蝶效应。", "tags": ["重生", "复仇", "记忆", "计划"]},
-            {"id": "p5", "name": "被动卷入型", "desc": "原本普通的平凡人，因偶然事件被卷入巨大漩涡。没有天赋和背景，靠过人的冷静和不服输的韧性在危机中成长。", "tags": ["普通人", "意外", "被迫", "成长"]},
-            {"id": "p6", "pro": True, "name": "黑化大佬型", "desc": "表面平平无奇甚至被人当弱者，实则深藏不露实力恐怖。不到关键时刻绝不暴露，一出手便惊天动地碾压一切。", "tags": ["隐藏实力", "黑化", "大佬", "反差"]},
-            {"id": "p7", "name": "系统加持型", "desc": "激活神秘金手指系统，通过完成任务获得奖励。系统既是外挂也是枷锁，压力与奖励推动主角不断前进。", "tags": ["系统", "金手指", "任务", "奖励"]},
-            {"id": "p8", "name": "女强人型", "desc": "独立坚强的女性主角，在男性主导的世界中凭实力闯出一片天。不依附任何人，事业和理想同样重要。", "tags": ["女强", "独立", "事业", "感情"]},
-            {"id": "p9", "pro": True, "name": "腹黑谋士型", "desc": "智慧超群善于布局，走一步看十步。不喜欢正面冲突，用计谋解决问题。表面温和无害，实则一切尽在掌握。", "tags": ["谋略", "腹黑", "智慧", "秘密"]},
-            {"id": "p10", "name": "冷酷杀手型", "desc": "曾是顶级杀手或特种兵，拥有超强的战斗技能。外表冷漠出手利落，但内心深处保留着人性，无法彻底摆脱过去的阴影。", "tags": ["杀手", "冷酷", "情感", "强大"]},
-        ]
-    },
-    "outline": {
-        "name": "故事大纲",
-        "icon": "📋",
-        "color": "#f59e0b",
-        "presets": [
-            {"id": "o1", "name": "英雄成长弧", "desc": "经典单主角成长路线，从平凡起点经历磨难考验，在关键时刻获得觉醒突破。打怪升级与心境历练并重，层层递进。", "tags": ["成长", "磨难", "觉醒", "巅峰"]},
-            {"id": "o2", "name": "三幕式结构", "desc": "经典三幕剧：建立世界观→矛盾升级→终极对决。起承转合分明，节奏把控精准，适合需要完整结构的长篇创作。", "tags": ["三幕", "冲突", "解决", "经典"]},
-            {"id": "o3", "name": "多线并行", "desc": "多个主角各有独立故事线，通过关键节点相互交织影响。最终在故事高潮部分汇合，命运碰撞产生化学反应。", "tags": ["多线", "交织", "相遇", "汇聚"]},
-            {"id": "o4", "name": "悬疑揭秘式", "desc": "开篇抛出巨大谜团，进程中不断抛出线索和转折。配角随时反转，结局大揭秘需要前面所有伏笔的完美呼应。", "tags": ["悬疑", "谜团", "线索", "反转"]},
-            {"id": "o5", "name": "打怪升级流", "desc": "以等级提升为主线，不断面对越来越强的敌人。每次战斗获得经验和突破，形成清晰的实力增长曲线，节奏明快。", "tags": ["升级", "敌人", "能力", "层次"]},
-            {"id": "o6", "name": "复仇计划式", "desc": "开局确立复仇目标，主角在暗处运筹帷幄。复仇分阶段推进，过程中揭露当年真相，主角面临道德和人性的考验。", "tags": ["复仇", "布局", "人性", "目标"]},
-            {"id": "o7", "pro": True, "name": "权谋争斗式", "desc": "各方势力明争暗斗，主角被卷入权力旋涡。凭智慧和魄力在夹缝中生存，逐步建立自己的势力，从棋子成长为执棋人。", "tags": ["权谋", "势力", "博弈", "执掌"]},
-            {"id": "o8", "name": "甜蜜爱情线", "desc": "主角与恋人的情感从相遇经历暧昧误会分离重聚，最终修成正果。甜蜜互动和虐心情节交替，适合以感情为主轴的言情类型。", "tags": ["爱情", "误会", "重聚", "甜蜜"]},
-            {"id": "o9", "name": "末世求存式", "desc": "末日降临，主角带领伙伴在废墟中求生。从搜索物资到建立据点，逐步扩大生存版图，在极端环境中考验人性。", "tags": ["末世", "团队", "求生", "重建"]},
-            {"id": "o10", "pro": True, "name": "全球危机式", "desc": "从个人危机扩展到全球威胁，主角被推到拯救世界的舞台。紧迫的时间线和不断升级的威胁贯穿整个故事。", "tags": ["危机", "扩展", "拯救", "使命"]},
-        ]
-    },
-    "conflict": {
-        "name": "核心冲突",
-        "icon": "⚔️",
-        "color": "#ef4444",
-        "presets": [
-            {"id": "c1", "name": "强弱对立", "desc": "主角面对实力远超于己的强敌，通过智慧毅力和机缘不断缩小差距。每次以弱胜强都是对极限的突破和意志的碰撞。", "tags": ["以弱胜强", "突破", "极限", "强敌"]},
-            {"id": "c2", "name": "善恶博弈", "desc": "正义与邪恶的终极对立，但界限并非总是清晰。主角坚守正义，即使在黑暗中也不放弃，反派的动机也暗含合理性。", "tags": ["善恶", "正义", "黑暗", "坚守"]},
-            {"id": "c3", "name": "利益纠葛", "desc": "多方势力因资源和利益产生冲突，没有绝对善恶只有立场不同。盟友可能变对手，敌人在利益面前也可能暂时合作。", "tags": ["利益", "立场", "多方", "博弈"]},
-            {"id": "c4", "name": "身份秘密", "desc": "主角拥有不可告人的双重身份，一旦暴露将带来毁灭性后果。日常伪装如履薄冰，每次接近暴露都是紧张刺激的戏码。", "tags": ["身份", "隐藏", "暴露", "真相"]},
-            {"id": "c5", "pro": True, "name": "命运对抗", "desc": "主角被预言或宿命束缚，但拒绝认命。用行动和选择对抗命运的安排，证明人的意志可以战胜天意。", "tags": ["命运", "预言", "反抗", "改变"]},
-            {"id": "c6", "name": "内心挣扎", "desc": "主角在道德与欲望、理性与感性之间艰难抉择。内心的撕裂感贯穿故事，通过与外部事件互动完成成长与和解。", "tags": ["内心", "道德", "欲望", "和解"]},
-            {"id": "c7", "name": "爱恨情仇", "desc": "爱恨交织的情感漩涡，最亲近的人可能是最大仇人。背叛与忠诚并存，情感成为推动故事的最强驱动力。", "tags": ["爱恨", "背叛", "忠诚", "情感"]},
-            {"id": "c8", "pro": True, "name": "文明冲突", "desc": "不同种族文明信仰之间的根本冲突，主角夹在中间寻找共存之道。战争与和平、传统与变革的宏大主题。", "tags": ["文明", "种族", "信仰", "冲突"]},
-        ]
-    },
-    "style": {
-        "name": "写作风格",
-        "icon": "✍️",
-        "color": "#8b5cf6",
-        "presets": [
-            {"id": "s1", "name": "爽文流畅", "desc": "节奏明快爽点密集，打脸情节紧凑，对话干脆有力。每章结尾留钩子吸引追读，适合追求阅读快感的网络小说。", "tags": ["爽文", "快节奏", "爽点", "打脸"]},
-            {"id": "s2", "name": "细腻文学", "desc": "注重心理和环境描写，用词考究富有韵律感。情感表达含蓄深刻，在细节处见真章，适合追求文学性的严肃创作。", "tags": ["细腻", "心理", "文学", "优美"]},
-            {"id": "s3", "name": "幽默诙谐", "desc": "语言轻松活泼，善用网络梗和反差萌制造笑料。对话风趣幽默，即使严肃场景也能用巧妙的幽默化解沉重。", "tags": ["幽默", "轻松", "反差", "梗"]},
-            {"id": "s4", "name": "热血燃情", "desc": "战斗场面热血激昂，技能招式充满画面感。人物对白铿锵有力，友情忠诚牺牲等主题在关键时刻引爆读者情感。", "tags": ["热血", "燃", "激烈", "豪情"]},
-            {"id": "s5", "pro": True, "name": "悬疑烧脑", "desc": "信息密度大，每句话都可能是伏笔。叙事手法多变，逻辑严谨自洽。反转频繁却不生硬，结局出人意料又在情理之中。", "tags": ["悬疑", "伏笔", "逻辑", "烧脑"]},
-            {"id": "s6", "name": "温情治愈", "desc": "以温暖治愈为核心基调，注重日常小确幸和人情味。节奏舒缓文字温和，读后让人心里暖暖的，适合放松心情。", "tags": ["温情", "治愈", "暖心", "细节"]},
-            {"id": "s7", "pro": True, "name": "黑暗沉重", "desc": "世界观阴暗，人性阴暗面充分展现。主角在苦难中成长，每一步都付出沉重代价，宿命感贯穿始终。", "tags": ["黑暗", "苦难", "宿命", "沉重"]},
-            {"id": "s8", "pro": True, "name": "甜蜜宠溺", "desc": "全方位甜宠风格，男女主角每次互动都充满糖分。甜蜜场景频繁出现，适合纯粹追求甜蜜感受的轻松阅读。", "tags": ["甜蜜", "宠溺", "糖分", "恋爱"]},
-        ]
-    },
-    "chapter": {
-        "name": "章节规划",
-        "icon": "📖",
-        "color": "#06b6d4",
-        "presets": [
-            {"id": "ch1", "name": "短篇（5-10章）", "desc": "精致紧凑的短篇，每章2000-3000字。情节高度集中，人物精简，开头迅速进入主题，结尾收束有力。", "tags": ["短篇", "精炼", "紧凑"]},
-            {"id": "ch2", "name": "中篇（20-50章）", "desc": "中等体量，每章3000-4000字。有完整起承转合，可安排1-2条支线，人物和世界观有足够展开空间。", "tags": ["中篇", "完整", "结构"]},
-            {"id": "ch3", "name": "长篇（100+章）", "desc": "大体量网文标准结构，每章2000-3000字。多线并行，大小高潮交替出现，适合系列化长篇作品。", "tags": ["长篇", "网文", "多线"]},
-            {"id": "ch4", "name": "卷轴式（按卷划分）", "desc": "长故事分为多个卷，每卷10-20章有独立小高潮。卷与卷之间通过主线相连，整体构成宏大的故事体系。", "tags": ["分卷", "高潮", "结构"]},
-            {"id": "ch5", "name": "番外式", "desc": "主线与番外结合，番外补充世界观、配角感情线或if线剧情。丰富故事宇宙，给读者更多阅读期待。", "tags": ["番外", "补充", "感情线"]},
-        ]
-    },
-    "pov": {
-        "name": "叙事视角",
-        "icon": "👁️",
-        "color": "#f97316",
-        "presets": [
-            {"id": "pov1", "name": "第一人称主角视角", "desc": "以主角的「我」叙述，代入感最强。读者直接感受主角的内心世界，情感冲击力强烈，但视角受限。", "tags": ["第一人称", "代入", "内心"]},
-            {"id": "pov2", "name": "第三人称有限视角", "desc": "用「他/她」叙述但始终跟随主角视角，既有客观距离又能深入内心。最常用也最安全的叙事选择。", "tags": ["第三人称", "有限", "平衡"]},
-            {"id": "pov3", "name": "第三人称全知视角", "desc": "上帝视角可切入任何角色的内心，方便多线叙事。可以制造读者知道但角色不知道的戏剧效果。", "tags": ["全知", "上帝视角", "多线"]},
-            {"id": "pov4", "name": "多视角切换", "desc": "按章节切换不同角色视角，从多个角度了解同一事件。每个视角有独特语气和关注点，适合多主角故事。", "tags": ["多视角", "切换", "对比"]},
-        ]
-    },
-    "setting_detail": {
-        "name": "细节设定",
-        "icon": "⚙️",
-        "color": "#84cc16",
-        "presets": [
-            {"id": "sd1", "name": "等级体系", "desc": "建立清晰完整的实力等级体系，从低到高依次划分。突破需满足特定条件，高阶对低阶有碾压性优势。", "tags": ["等级", "晋升", "体系"]},
-            {"id": "sd2", "name": "势力格局", "desc": "规划世界中的主要政治和军事势力，包括疆域实力和外交关系。各势力形成制衡博弈，为主线提供丰富剧情支点。", "tags": ["势力", "格局", "关系"]},
-            {"id": "sd3", "name": "特殊道具/神器", "desc": "设定故事中关键作用的独特道具，每个有专属来历和限制。推动情节的重要工具，获取和使用都需付出代价。", "tags": ["神器", "道具", "功法"]},
-            {"id": "sd4", "name": "配角关系网", "desc": "设计主角身边的配角阵容，每个有独立动机和成长弧线。配角有自己的生活，在关键节点与主线交叉。", "tags": ["配角", "关系", "弧光"]},
-            {"id": "sd5", "name": "核心伏笔", "desc": "提前铺设将在中后期揭晓的重要伏笔。铺设自然不突兀，大伏笔套小伏笔，揭晓时有足够冲击力。", "tags": ["伏笔", "悬念", "揭示"]},
-            {"id": "sd6", "name": "独特设定", "desc": "建立故事世界独有的规则或概念，让作品脱颖而出。通过剧情逐渐展现给读者，与核心叙事紧密结合。", "tags": ["独特", "规则", "新鲜"]},
-        ]
-    },
-    "characters": {
-        "name": "角色设定",
-        "icon": "🎭",
-        "color": "#ec4899",
-        "presets": [
-            {"id": "cr1", "name": "导师/师傅型", "desc": "主角的引路人，学识深厚实力强大。在关键时刻给予指引和帮助，但也有自己的秘密和局限性。", "tags": ["导师", "秘密", "实力", "引路"]},
-            {"id": "cr2", "name": "挚友/搭档型", "desc": "主角最信任的伙伴，性格互补生死与共。一起经历考验建立牢不可破的友谊，为主角提供情感支撑。", "tags": ["挚友", "互补", "信任", "并肩"]},
-            {"id": "cr3", "name": "宿敌/反派型", "desc": "与主角势均力敌的对手，有自己的信念和动机。不是单纯恶人，每一次交锋都推动双方成长。", "tags": ["宿敌", "信念", "推动", "势均"]},
-            {"id": "cr4", "name": "恋人/感情线型", "desc": "故事的感情核心，与主角有难以割舍的情感羁绊。让主角在冷酷法则之外保留人性的温度。", "tags": ["恋人", "情感", "羁绊", "柔软"]},
-            {"id": "cr5", "name": "搞笑担当型", "desc": "活跃气氛的开心果，在紧张情节中提供喘息空间。关键时刻也能展现出意料之外的勇气和担当。", "tags": ["搞笑", "调节", "反差", "意外"]},
-            {"id": "cr6", "name": "神秘人/幕后型", "desc": "身份目的成谜，偶尔出现给予暗示后消失。存在感贯穿故事，真实身份在后期才揭晓。", "tags": ["神秘", "幕后", "暗示", "揭晓"]},
-            {"id": "cr7", "name": "团队伙伴型", "desc": "与主角组成团队的成员，各有所长配合默契。在冒险中每个人都有自己的高光时刻，共同成长。", "tags": ["团队", "成长", "合作", "多元"]},
-            {"id": "cr8", "name": "引路NPC型", "desc": "在特定场景出现的关键路人，提供重要信息或道具后淡出。虽然出场不多但对剧情推进有不可替代的作用。", "tags": ["路人", "关键", "信息", "道具"]},
-        ]
-    },
-    "romance": {
-        "name": "情感关系",
-        "icon": "💕",
-        "color": "#ec4899",
-        "_pro_only": True,
-        "presets": [
-            {"id": "bl1", "name": "男男之恋 (BL)", "desc": "两个男性之间的深刻情感，从试探到确认心意，面对世俗眼光和自我认同的双重考验。甜蜜与压力并存。", "tags": ["BL", "男男", "羁绊", "试探"]},
-            {"id": "gl1", "name": "女女之恋 (GL)", "desc": "两位女性之间的温柔情感，从朋友默契到恋人亲密。突破社会期待寻找真实自我，在陪伴中找到勇气。", "tags": ["GL", "女女", "细腻", "真实"]},
-            {"id": "agediff1", "name": "姐弟恋", "desc": "年上女性与年下男性，成熟稳重与青春活力的碰撞。她用阅历引导他成长，他用热情治愈她的疲惫。", "tags": ["姐弟", "年龄差", "成熟", "活力"]},
-            {"id": "agediff2", "name": "大叔萝莉", "desc": "成熟年长男性与青春少女的组合。他给安全感，她用纯真点亮他的世界。温柔守护型的感情基调。", "tags": ["大叔", "萝莉", "守护", "反差"]},
-            {"id": "office1", "name": "办公室恋情", "desc": "职场中悄然滋生的感情，日常合作中默默升温。要面对公司制度和同事议论，在克制与冲动间寻求平衡。", "tags": ["职场", "克制", "暧昧", "规则"]},
-            {"id": "campus1", "name": "校园暗恋", "desc": "学生时代最纯粹的感情，从偷偷注视到鼓起勇气告白。课间交汇、放学同路，每一件小事都值得珍惜。", "tags": ["校园", "暗恋", "青涩", "同桌"]},
-            {"id": "forbidden1", "name": "禁忌之恋", "desc": "违背常规伦理的感情，每一步都在道德悬崖边行走。秘密约会和隐藏关系充满刺激，禁忌感本身就是催化剂。", "tags": ["禁忌", "道德", "挣扎", "背德"]},
-            {"id": "rebirth_love", "name": "重生追爱", "desc": "带着前世记忆和遗憾重生，不愿再错过最重要的人。前世未说出口的话、未能在一起的遗憾，全部在这一世弥补。", "tags": ["重生", "追爱", "弥补", "前世"]},
-            {"id": "enemy_love", "name": "相爱相杀", "desc": "立场对立却无法抑制地被吸引，每一次交锋都是试探。敌对身份下的短暂合作充满了致命的戏剧张力。", "tags": ["宿敌", "对立", "羁绊", "纠缠"]},
-            {"id": "heal_love", "name": "治愈系恋爱", "desc": "两个受过伤的灵魂相遇，用温柔慢慢修复彼此的创口。发展缓慢而坚定，在点滴相处中积累深厚情感。", "tags": ["治愈", "温柔", "修复", "疗伤"]},
-            {"id": "bl_deep", "name": "男男之恋·深柜觉醒", "desc": "从未怀疑过自己取向的男性，在遇到他后开始动摇。从否认挣扎到接受面对，一段艰难的内心觉醒之旅。", "tags": ["BL", "觉醒", "挣扎", "勇气"]},
-            {"id": "bl_rival", "name": "男男之恋·强强对抗", "desc": "两个同样强大的男性，从竞争对手到彼此欣赏。感情不是征服而是平等认可，既有征服的快感也有臣服的温柔。", "tags": ["BL", "强强", "征服", "平等"]},
-            {"id": "gl_slow", "name": "女女之恋·慢热升温", "desc": "从普通同学同事关系开始，在日常相处中一步步靠近。一起吃饭逛街倾诉心事，慢热但后劲十足。", "tags": ["GL", "慢热", "细腻", "日常"]},
-            {"id": "gl_brave", "name": "女女之恋·勇敢出柜", "desc": "面对家庭社会和自我认知的多重压力，依然选择公开关系。出柜过程充满泪水和曲折，但携手面对所有困难。", "tags": ["GL", "出柜", "勇气", "家人"]},
-            {"id": "age_younger", "name": "年龄差·年下攻略", "desc": "年轻一方主动出击，用热忱纯真融化对方心防。不因年龄差距退缩，用真诚证明成熟与年龄无关。", "tags": ["年下", "主动", "热忱", "纯真"]},
-            {"id": "age_older", "name": "年龄差·大叔宠爱", "desc": "年长一方用阅历和成熟包容引导对方，给予无微不至的关怀。不轻易说爱但每个行动都在表达心意。", "tags": ["大叔", "守护", "成熟", "包容"]},
-            {"id": "forb_office", "name": "禁忌之恋·办公室", "desc": "职场地下恋情，每次在公司偶遇都装作陌生人。信息暧昧、加班独处、出差共度，每一步都刺激又危险。", "tags": ["职场", "地下", "刺激", "危险"]},
-            {"id": "forb_enemy", "name": "禁忌之恋·宿敌相恋", "desc": "身处对立阵营的敌人，在交锋中产生致命吸引力。忠诚与背叛之间摇摆，爱得越深就越致命。", "tags": ["宿敌", "致命", "背叛", "纠缠"]},
-        ]
-    }
-}
+def get_features_api():
+    return jsonify(get_features())
 
 # ========== 项目管理 ==========
 @app.route('/api/projects', methods=['GET'])
 def get_projects():
-    projects = load_json(PROJECTS_FILE, [])
-    return jsonify(projects)
+    return jsonify(load_json(PROJECTS_FILE, []))
 
 @app.route('/api/projects', methods=['POST'])
 def create_project():
     data = request.json
-
-    # 检查 max_flows 限制
-    lic = _get_current_license()
+    lic = get_current_license()
     max_flows = lic['info'].get('max_flows', 1)
     projects = load_json(PROJECTS_FILE, [])
     if len(projects) >= max_flows:
         return jsonify({
             'error': f'{"免费版" if lic["tier"] == "free" else "当前版本"}最多创建 {max_flows} 个项目，请删除旧项目或升级',
-            'tier': lic['tier'],
-            'max_flows': max_flows
+            'tier': lic['tier'], 'max_flows': max_flows
         }), 403
     project = {
         'id': str(uuid.uuid4()),
         'name': data.get('name', '新小说项目'),
-        'created': time.time(),
-        'updated': time.time(),
-        'nodes': data.get('nodes', []),
-        'edges': data.get('edges', []),
-        'settings': data.get('settings', {}),
-        'output': data.get('output', '')
+        'created': time.time(), 'updated': time.time(),
+        'nodes': data.get('nodes', []), 'edges': data.get('edges', []),
+        'settings': data.get('settings', {}), 'output': data.get('output', '')
     }
     projects.append(project)
     save_json(PROJECTS_FILE, projects)
@@ -579,8 +137,6 @@ def get_category_presets(category):
     return jsonify({'error': 'not found'}), 404
 
 # ========== 自定义模板 ==========
-import time as _time
-
 @app.route('/api/custom-templates', methods=['GET'])
 def get_custom_templates():
     return jsonify(load_json(CUSTOM_TEMPLATES_FILE, []))
@@ -592,9 +148,8 @@ def save_custom_template():
     template = {
         'id': str(uuid.uuid4())[:8],
         'name': data.get('name', '未命名模板'),
-        'created': _time.time(),
-        'nodes': data.get('nodes', []),
-        'edges': data.get('edges', [])
+        'created': time.time(),
+        'nodes': data.get('nodes', []), 'edges': data.get('edges', [])
     }
     templates.append(template)
     save_json(CUSTOM_TEMPLATES_FILE, templates)
@@ -607,26 +162,24 @@ def delete_custom_template(template_id):
     save_json(CUSTOM_TEMPLATES_FILE, templates)
     return jsonify({'ok': True})
 
-# ========== 模型配置 ==========
+# ========== 模型配置测试 ==========
 @app.route('/api/models/test', methods=['POST'])
 def test_model():
+    import requests
     data = request.json
     model_type = data.get('type', 'ollama')
     config = data.get('config', {})
-    
     try:
         if model_type == 'ollama':
             base_url = config.get('base_url', 'http://localhost:11434')
             r = requests.get(f'{base_url}/api/tags', timeout=5)
             models = [m['name'] for m in r.json().get('models', [])]
             return jsonify({'ok': True, 'models': models})
-        
         elif model_type == 'lmstudio':
             base_url = config.get('base_url', 'http://localhost:11435')
             r = requests.get(f'{base_url}/v1/models', timeout=5)
             models = [m['id'] for m in r.json().get('data', [])]
             return jsonify({'ok': True, 'models': models})
-        
         elif model_type in ['openai', 'deepseek', 'tongyi', 'custom']:
             api_key = config.get('api_key', '')
             base_url = config.get('base_url', 'https://api.openai.com/v1')
@@ -643,97 +196,6 @@ def test_model():
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 400
 
-# ========== AI 调用核心 ==========
-def call_llm(config, messages, stream=False):
-    """统一调用不同模型，支持完整推理参数，返回生成的文本内容"""
-    model_type = config.get('type', 'ollama')
-    
-    # 通用推理参数
-    max_tokens = config.get('max_tokens', 4096)
-    temperature = config.get('temperature', 0.8)
-    top_p = config.get('top_p', 0.95)
-    repeat_penalty = config.get('repeat_penalty', 1.1)
-    frequency_penalty = config.get('frequency_penalty', 0.3)
-    presence_penalty = config.get('presence_penalty', 0.3)
-    num_ctx = config.get('num_ctx', 4096)
-    
-    if model_type == 'ollama':
-        base_url = config.get('base_url', 'http://localhost:11434')
-        model = config.get('model', 'qwen2.5:7b')
-        payload = {
-            'model': model,
-            'messages': messages,
-            'stream': False,
-            'options': {
-                'temperature': temperature,
-                'top_p': top_p,
-                'repeat_penalty': repeat_penalty,
-                'num_predict': max_tokens,
-                'num_ctx': num_ctx,
-                'frequency_penalty': frequency_penalty,
-                'presence_penalty': presence_penalty,
-            }
-        }
-        resp = requests.post(f'{base_url}/api/chat',
-            json=payload, timeout=180)
-        resp_json = resp.json()
-        if 'error' in resp_json:
-            raise ValueError(f"Ollama 错误: {resp_json['error']}")
-        content = resp_json['message']['content']
-        return content
-    
-    elif model_type == 'lmstudio':
-        base_url = config.get('base_url', 'http://localhost:11435')
-        model = config.get('model', '')
-        headers = {'Content-Type': 'application/json'}
-        payload = {
-            'model': model,
-            'messages': messages,
-            'max_tokens': max_tokens,
-            'temperature': temperature,
-            'top_p': top_p,
-            'repeat_penalty': repeat_penalty,
-            'frequency_penalty': frequency_penalty,
-            'presence_penalty': presence_penalty,
-        }
-        resp = requests.post(f'{base_url}/v1/chat/completions',
-            headers=headers, json=payload, timeout=180)
-        resp_json = resp.json()
-        if 'error' in resp_json:
-            err = resp_json['error']
-            raise ValueError(f"LM Studio 错误: {err.get('message', err)}")
-        content = resp_json['choices'][0]['message']['content']
-        return content
-    
-    elif model_type in ['openai', 'deepseek', 'tongyi', 'custom']:
-        api_key = config.get('api_key', '')
-        base_url = config.get('base_url', 'https://api.openai.com/v1')
-        model = config.get('model', 'gpt-3.5-turbo')
-        # 生产环境不打印 API Key（仅记录模型类型）
-
-        headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
-        payload = {
-            'model': model,
-            'messages': messages,
-            'max_tokens': max_tokens,
-            'temperature': temperature,
-            'top_p': top_p,
-            'frequency_penalty': frequency_penalty,
-            'presence_penalty': presence_penalty,
-        }
-        resp = requests.post(f'{base_url}/chat/completions',
-            headers=headers, json=payload, timeout=180)
-        resp_json = resp.json()
-        if 'error' in resp_json:
-            err = resp_json['error']
-            raise ValueError(f"API 错误 [{resp.status_code}]: {err.get('message', err)}")
-        if 'choices' not in resp_json:
-            raise ValueError(f"API 返回异常 [{resp.status_code}]: {resp.text[:200]}")
-        content = resp_json['choices'][0]['message']['content']
-        return content
-
-    raise ValueError(f'Unknown model type: {model_type}')
-
 # ========== AI 生成选项 ==========
 @app.route('/api/ai/generate-options', methods=['POST'])
 def generate_options():
@@ -742,54 +204,29 @@ def generate_options():
     context = data.get('context', {})
     mc = data.get('model_config', {})
     count = data.get('count', 4)
+    lic = get_current_license()
 
-    # License 检查
-    lic = _get_current_license()
-    
-    # Pro 专属模板检查
-    PRO_ONLY_TYPES = {'romance', 'custom'}
     if node_type in PRO_ONLY_TYPES and lic['tier'] != 'professional':
-        return jsonify({
-            'ok': False,
-            'error': '此模板仅专业版可用，请升级',
-            'tier': lic['tier']
-        }), 403
+        return jsonify({'ok': False, 'error': '此模板仅专业版可用，请升级', 'tier': lic['tier']}), 403
 
-    # 模板类型权限检查（Free/Standard/Pro 可用模板不同）
     allowed_templates = lic['info'].get('template_types', ['genre'])
     if node_type not in allowed_templates:
-        return jsonify({
-            'ok': False,
-            'error': f'当前版本不支持「{_node_type_label(node_type)}」模板，请升级',
-            'tier': lic['tier']
-        }), 403
-    
-    max_templates = lic['info'].get('max_template_calls', 3)
-    today = time.strftime('%Y-%m-%d')
-    tc_file = DATA_DIR / f'template_count_{today}.json'
-    tc_data = load_json(tc_file, {'count': 0})
-    if tc_data['count'] >= max_templates:
-        return jsonify({
-            'ok': False,
-            'error': f'{"免费版" if lic["tier"]=="free" else "当前版本"}每日模板生成为 {max_templates} 次，今日已用完',
-            'tier': lic['tier']
-        }), 403
+        return jsonify({'ok': False, 'error': f'当前版本不支持「{_node_type_label(node_type)}」模板，请升级', 'tier': lic['tier']}), 403
 
-    # 平台 API 注入
+    max_templates = lic['info'].get('max_template_calls', 3)
+    from storyflow.storage import get_template_daily_count, increment_template_daily_count
+    if get_template_daily_count() >= max_templates:
+        return jsonify({'ok': False, 'error': f'{"免费版" if lic["tier"]=="free" else "当前版本"}每日模板生成为 {max_templates} 次，今日已用完', 'tier': lic['tier']}), 403
+
     use_platform = data.get('use_platform_api', False)
     if use_platform:
         if lic['tier'] == 'free':
             return jsonify({'ok': False, 'error': '平台 API 仅支持付费版本'}), 403
-        remaining = _get_remaining_platform_tokens()
+        remaining = get_remaining_tokens(lic)
         if remaining <= 0:
             return jsonify({'ok': False, 'error': '平台 API Token 已用完'}), 403
-        mc = {
-            'type': 'deepseek',
-            'api_key': PLATFORM_API_KEY,
-            'base_url': 'https://api.deepseek.com/v1',
-            'model': PLATFORM_API_MODEL,
-        }
-    
+        mc = {'type': 'deepseek', 'api_key': PLATFORM_API_KEY, 'base_url': 'https://api.deepseek.com/v1', 'model': PLATFORM_API_MODEL}
+
     prompts = {
         'genre': f"请为一部小说生成{count}个独特的体裁/类型设定方向，以JSON数组返回，每个包含：name(名称), desc(50字描述), tags(3个关键词数组)。只返回JSON，不要其他文字。",
         'world': f"基于体裁：{context.get('genre','')}\n请生成{count}个独特的世界观设定，JSON数组，每个包含：name, desc(80字), tags(4个关键词)。只返回JSON。",
@@ -807,17 +244,10 @@ def generate_options():
             {'role': 'user', 'content': prompts.get(node_type, f"为小说的{node_type}节点生成{count}个预设选项，JSON数组返回，每个含name/desc/tags字段。只返回JSON。")}
         ]
         result = call_llm(mc, messages)
-
-        # 平台 API Token 消耗
         if use_platform:
-            _consume_platform_tokens(max(len(result), len(result)//3))
-
-        # 记录模板调用次数
-        tc_data['count'] += 1
-        save_json(tc_file, tc_data)
-        
-        # 提取JSON
-        json_match = _re.search(r'\[.*\]', result, _re.DOTALL)
+            consume_platform_tokens(get_license_token_id(), max(len(result), len(result)//3))
+        increment_template_daily_count()
+        json_match = re.search(r'\[.*\]', result, re.DOTALL)
         if json_match:
             options = json.loads(json_match.group())
             for i, opt in enumerate(options):
@@ -829,189 +259,9 @@ def generate_options():
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
 
-# ========== AI 写作辅助函数 ==========
-import re as _re
-
-def _is_sentence_complete(text):
-    """检测文本是否以完整句子结尾（防止小模型 token 限制导致半截输出）"""
-    if not text or len(text) < 50:
-        return False
-    # 取最后 20 个非空白字符判断
-    tail = text.strip()[-50:]
-    # 完整句子结束符
-    complete_endings = ['。', '！', '？', '!', '?', '.', '"', '」', '…', '——', '~']
-    for ending in complete_endings:
-        if tail.rstrip().endswith(ending):
-            return True
-    # 检查是否以换行+标题结尾（常见的小说章节结束模式）
-    if _re.search(r'[\n\r]{2,}', tail[-10:]):
-        return True
-    return False
-
-def _extract_chapter_summary(text, max_len=300):
-    """从生成的章节中提取简短摘要"""
-    lines = text.strip().split('\n')
-    # 取前几段作为摘要骨架
-    summary_lines = []
-    char_count = 0
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        # 跳过大标题
-        if line.startswith('#') or len(line) < 5:
-            if not line.startswith('#'):
-                continue
-        summary_lines.append(line)
-        char_count += len(line)
-        if char_count > max_len:
-            break
-    return ' '.join(summary_lines)[:max_len]
-
-# KEY FRAGMENT 3/4
-def _kfrag_3():
-    return b"deepseek-v4"
-
-def _auto_continue(model_config, messages, initial_result, max_retries=2):
-    """自动续写：如果输出不完整，追加续写调用"""
-    result = initial_result
-    for attempt in range(max_retries):
-        if _is_sentence_complete(result):
-            break
-        # 构建续写 prompt：带上最后一段上下文
-        last_part = result[-500:]
-        continue_msg = {
-            'role': 'user',
-            'content': f'上文在这里中断了：\n"""\n{last_part}\n"""\n\n请从断点处精确继续，不要重复上文已有的内容，直接续写后续段落。只输出续写内容，不要加任何前缀说明。'
-        }
-        try:
-            continuation = call_llm(model_config, messages + [continue_msg])
-            result += continuation
-        except Exception:
-            break  # 续写失败不阻塞主流程
-    return result
-
-# ========== 去AI味机制 ==========
-
-# 1. 反AI味系统提示词
-ANTI_AI_PROMPT = """⛔ 去AI味写作铁律（必须严格遵守）：
-
-【禁用黑名单】以下词汇/句式一律禁止使用，哪怕你觉得用着顺手：
-- 虚词堆叠：然而、不禁、宛如、仿佛、竟、却、隐隐、缓缓、微微、淡淡、轻轻、默默、静静、柔柔、悠悠、悄然、陡然、蓦然、陡地、忽地、蓦地
-- 套话模板："这是一个..."、"那是一个..."、"在这个...中"、"他的眼中闪过一丝..."、"嘴角微微上扬"、"心中一动"、"不由得"、"不由自主"
-- 形容词叠堆：不要连续使用两个以上的形容词修饰同一个名词
-- 万能比喻：禁止用"如...一般"、"像...似的"超过1次/千字
-
-【必须遵守】
-1. 用具体感官细节代替抽象形容（写"他攥紧拳头，指甲掐进掌心"而非"他感到愤怒"）
-2. 句式长短交替：短句3-8字用于节奏和动作，长句15-30字用于描写和叙述，禁止连续3句同长度
-3. 人物对话要有口语感，每个人物有独特的说话习惯和口头禅，不用书面腔
-4. 禁止每段开头用"XX的"、"在XX中"的固定模式，每段开头要有变化
-5. 比喻和排比有节制：每千字不超过1个比喻，禁止连续排比超过3句
-6. 叙事视角一致，不随意切换；用人物行动展现心理，少用"他感到/觉得/想"
-7. 留白和省略：不要事无巨细全写出来，适当跳过过渡环节
-8. 环境描写要融入人物行动中，不要独立成段纯写景
-9. 时间推进要有节奏感，不能每段都是同样的时间尺度"""
-
-# 不同写作风格的额外规则
-STYLE_RULES = {
-    'literary': """【文学写实模式】
-- 克制、精准，每个词都有存在的必要
-- 多用白描手法，少用修辞
-- 细节要具体到品牌、型号、颜色、气味
-- 对话简短有力，不说废话
-- 善用省略号和破折号表示语流中断""",
-    
-    'colloquial': """【口语化模式】
-- 叙述语言接近日常口语，可以略带方言感
-- 允许使用口语化的语气词（嘛、呗、哎、哈）
-- 句子结构简单直接，少用从句和长定语
-- 对话要有大量语气词、省略、打断、重复等真实对话特征
-- 用词要接地气，"他溜达"比"他缓步而行"好""",
-    
-    'hardcore': """【硬核简洁模式】
-- 极简叙事，能用5个字说完的不用10个字
-- 短句为主，平均句长不超过12字
-- 砍掉所有不必要的形容词和副词
-- 动词优先：用动作推进，不用心理描写
-- 对话只写关键信息，寒暄和客套一律省略
-- 场景转换要快，不要铺垫过渡""",
-    
-    'poetic': """【诗意浪漫模式】
-- 可以使用更多修辞，但要有节制，每千字不超过2个比喻
-- 修辞要有独创性，禁止用烂俗比喻（如"像花一样"、"如水般"）
-- 注重韵律和节奏感，段落结尾的句子要有余韵
-- 意象要连贯，同一场景的意象要有内在联系
-- 情感要含蓄，通过意象暗示而非直白表达""",
-}
-
-# 2. 后处理：AI味清洗
-# AI高频套话替换映射表
-_AI_FILLER_MAP = {
-    # 虚词替换
-    '然而': '', '不禁': '', '宛如': '像', '仿佛': '像',
-    '陡然': '突然', '蓦然': '突然', '陡地': '突然', '忽地': '突然', '蓦地': '突然',
-    '悄然': '悄悄', '隐隐': '', '缓缓': '慢', '微微': '略',
-    '淡淡地': '', '轻轻地': '', '默默地': '', '静静地': '',
-    '柔柔地': '', '悠悠地': '',
-    # 套话替换
-    '嘴角微微上扬': '笑了笑', '嘴角上扬': '笑了',
-    '心中一动': '', '不由得': '', '不由自主': '',
-    '他的眼中闪过一丝': '他眼里', '她眼中闪过一丝': '她眼里',
-    '一股XX的力量': '', '一股强大的力量': '',
-    '仿佛整个世界都': '', '宛如置身于': '',
-}
-
-def _post_process_text(text, style='literary'):
-    """后处理：清洗AI味，让文本更自然"""
-    if not text:
-        return text
-    
-    result = text
-    
-    # Phase 1: 替换AI高频套话
-    for ai_phrase, replacement in _AI_FILLER_MAP.items():
-        result = result.replace(ai_phrase, replacement)
-    
-    # Phase 2: 压缩连续重复的形容词模式（如"美丽的温柔的善良的"）
-    result = _re.sub(r'([\u4e00-\u9fff]{2,4}的){3,}', lambda m: m.group(0)[:m.group(0).index('的', m.group(0).index('的') + 1) + 1], result)
-    
-    # Phase 3: 去除"他/她感到/觉得/想"的过度使用（连续出现3次以上时替换部分）
-    feel_pattern = _re.compile(r'(他|她|它)(感到|觉得|心想)')
-    feel_matches = list(feel_pattern.finditer(result))
-    if len(feel_matches) >= 3:
-        # 保留第1个和最后1个，中间的替换为行动描写提示
-        for i, match in enumerate(feel_matches[1:-1], 1):
-            # 只替换奇数位的，偶数位的保留
-            if i % 2 == 1:
-                result = result[:match.start()] + match.group(1) + '的动作暗示了这一点' + result[match.end():]
-    
-    # Phase 4: 口语化风格更激进地替换书面词
-    if style == 'colloquial':
-        colloquial_map = {
-            '缓缓': '慢慢', '悄然': '悄悄', '凝视': '盯着看',
-            '注视': '看着', '沉思': '想', '叹息': '叹气',
-            '漫步': '溜达', '审视': '打量', '凝望': '望着',
-            '伫立': '站', '伫足': '停下', '驻足': '停下',
-            '疾步': '快步', '疾驰': '飞奔', '蜿蜒': '弯弯绕绕',
-            '磅礴': '很大', '恢弘': '很大气', '肃穆': '严肃',
-            '缱绻': '亲密', '萦绕': '绕着', '徜徉': '逛',
-            '踌躇': '犹豫', '蹒跚': '摇摇晃晃', '踱步': '来回走',
-        }
-        for formal, casual in colloquial_map.items():
-            result = result.replace(formal, casual)
-    
-    # Phase 5: 清理替换后可能产生的多余空格和标点
-    result = _re.sub(r'  +', ' ', result)  # 多余空格
-    result = _re.sub(r'，，', '，', result)  # 连续逗号
-    result = _re.sub(r'。。', '。', result)  # 连续句号
-    
-    return result
-
 # ========== AI 写作执行 ==========
 writing_tasks = {}
 
-# 定期清理过期任务（防止内存泄漏）
 def _cleanup_writing_tasks(interval=300):
     while True:
         time.sleep(interval)
@@ -1020,8 +270,6 @@ def _cleanup_writing_tasks(interval=300):
                    if t.get('status') in ('done', 'error') and now - t.get('_ts', 0) > 3600]
         for tid in expired:
             writing_tasks.pop(tid, None)
-        if expired:
-            print(f'[清理] 已清除 {len(expired)} 个过期写作任务', flush=True)
 
 threading.Thread(target=_cleanup_writing_tasks, daemon=True).start()
 
@@ -1029,68 +277,34 @@ threading.Thread(target=_cleanup_writing_tasks, daemon=True).start()
 def start_writing():
     data = request.json or {}
     model_config = data.get('model_config', {})
-
-    lic = _get_current_license()
+    lic = get_current_license()
     writing_style = data.get('writing_style', 'literary')
 
-    # 写作风格权限检查
     allowed_styles = lic['info'].get('writing_styles', ['literary'])
     if writing_style not in allowed_styles:
-        return jsonify({
-            'error': f'当前版本不支持「{writing_style}」风格，请升级',
-            'tier': lic['tier'],
-            'allowed': allowed_styles
-        }), 403
+        return jsonify({'error': f'当前版本不支持「{writing_style}」风格，请升级', 'tier': lic['tier'], 'allowed': allowed_styles}), 403
 
-    # 平台 API 模式检查
     use_platform_api = data.get('use_platform_api', False)
     if use_platform_api:
         if lic['tier'] == 'free':
-            return jsonify({
-                'error': '平台 API 仅支持付费版本使用，请先升级',
-                'tier': 'free'
-            }), 403
-        remaining = _get_remaining_platform_tokens()
+            return jsonify({'error': '平台 API 仅支持付费版本使用，请先升级', 'tier': 'free'}), 403
+        remaining = get_remaining_tokens(lic)
         if remaining <= 0:
-            return jsonify({
-                'error': '平台 API Token 已用完，请使用自己的 Key 或升级',
-                'tier': lic['tier']
-            }), 403
-        model_config = {
-            'type': 'deepseek',
-            'api_key': PLATFORM_API_KEY,
-            'base_url': 'https://api.deepseek.com/v1',
-            'model': PLATFORM_API_MODEL,
-        }
+            return jsonify({'error': '平台 API Token 已用完，请使用自己的 Key 或升级', 'tier': lic['tier']}), 403
+        model_config = {'type': 'deepseek', 'api_key': PLATFORM_API_KEY, 'base_url': 'https://api.deepseek.com/v1', 'model': PLATFORM_API_MODEL}
 
-    # 免费版每日生成次数检查
-    daily_count = _get_daily_gen_count()
+    daily_count = get_daily_gen_count()
     max_gen = lic['info'].get('max_daily_generations', 3)
     if daily_count >= max_gen:
-        return jsonify({
-            'error': f'{"免费版" if lic["tier"] == "free" else "当前版本"}每日限{max_gen}次生成，今日已用完。',
-            'tier': lic['tier'],
-            'daily_count': daily_count,
-            'max_daily': max_gen
-        }), 403
+        return jsonify({'error': f'{"免费版" if lic["tier"] == "free" else "当前版本"}每日限{max_gen}次生成，今日已用完。', 'tier': lic['tier'], 'daily_count': daily_count, 'max_daily': max_gen}), 403
 
     task_id = str(uuid.uuid4())
-
-    writing_tasks[task_id] = {
-        'status': 'pending',
-        'progress': 0,
-        'output': '',
-        'error': None,
-        'chapter_summaries': [],
-        '_ts': time.time(),
-    }
+    writing_tasks[task_id] = {'status': 'pending', 'progress': 0, 'output': '', 'error': None, 'chapter_summaries': [], '_ts': time.time()}
 
     def do_write():
         try:
             writing_tasks[task_id]['status'] = 'running'
             flow_config = data.get('flow', {})
-
-            # 构建写作提示词
             genre = flow_config.get('genre', {}).get('selected', {})
             world = flow_config.get('world', {}).get('selected', {})
             protagonist = flow_config.get('protagonist', {}).get('selected', {})
@@ -1101,13 +315,10 @@ def start_writing():
             pov = flow_config.get('pov', {}).get('selected', {})
             setting_detail = flow_config.get('setting_detail', {}).get('selected', {})
             custom_notes = flow_config.get('custom_notes', '')
-
             custom_prompt = data.get('custom_prompt', '')
-
             writing_style = data.get('writing_style', 'literary')
             style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
 
-            # 根据 anti_ai_level 决定去AI味强度
             anti_ai_level = lic['info']['anti_ai_level']
             if anti_ai_level == 'basic':
                 anti_ai_text = """【去AI味要求（基础模式）】
@@ -1117,11 +328,7 @@ def start_writing():
             elif anti_ai_level == 'full':
                 anti_ai_text = ANTI_AI_PROMPT
             elif anti_ai_level == 'custom':
-                anti_ai_text = ANTI_AI_PROMPT + """
-
-【自定义增强模式】
-- 你可以根据用户提供的额外去AI味规则进行动态调整
-- 对输出的文字进行多轮自检，确保达到出版级自然度"""
+                anti_ai_text = ANTI_AI_PROMPT + "\n\n【自定义增强模式】\n- 你可以根据用户提供的额外去AI味规则进行动态调整\n- 对输出的文字进行多轮自检，确保达到出版级自然度"
 
             system_prompt = f"""你是一位专业的小说作者，擅长各种题材的创作。
 请根据用户提供的设定，创作出引人入胜的小说内容。
@@ -1144,7 +351,6 @@ def start_writing():
             if custom_prompt:
                 system_prompt += f"\n\n【用户自定义约束规则】(以下为附加约束，如有与上述规则冲突，以上述规则为准)\n{custom_prompt}\n"
 
-            # 构建角色名字列表
             char_names = []
             if protagonist.get('char_name'):
                 char_names.append(f"主角：{protagonist['char_name']}")
@@ -1180,36 +386,21 @@ def start_writing():
 按照以上格式输出。确保内容完整，不要写到一半中断。"""
 
             writing_tasks[task_id]['progress'] = 20
-
-            messages = [
-                {'role': 'system', 'content': system_prompt},
-                {'role': 'user', 'content': user_prompt}
-            ]
-
+            messages = [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': user_prompt}]
             result = call_llm(model_config, messages)
             writing_tasks[task_id]['progress'] = 60
-
-            # 自动续写：检测是否因 token 限制导致半截输出
-            result = _auto_continue(model_config, messages, result)
-
-            # 去AI味后处理
-            result = _post_process_text(result, writing_style)
-
+            result = auto_continue(model_config, messages, result)
+            result = post_process_text(result, writing_style)
             writing_tasks[task_id]['output'] = result
-            summary = _extract_chapter_summary(result)
+            summary = extract_chapter_summary(result)
             if summary:
                 writing_tasks[task_id]['chapter_summaries'].append(summary)
             writing_tasks[task_id]['progress'] = 100
             if use_platform_api:
                 output_len = len(result)
-                est_tokens = max(output_len, output_len // 3)
-                _consume_platform_tokens(est_tokens)
-
+                consume_platform_tokens(get_license_token_id(), max(output_len, output_len // 3))
             writing_tasks[task_id]['status'] = 'done'
-
-            # 增加今日生成计数
-            _increment_daily_gen_count()
-
+            increment_daily_gen_count()
         except Exception as e:
             writing_tasks[task_id]['status'] = 'error'
             writing_tasks[task_id]['error'] = str(e)
@@ -1217,7 +408,6 @@ def start_writing():
     t = threading.Thread(target=do_write)
     t.daemon = True
     t.start()
-
     return jsonify({'task_id': task_id})
 
 @app.route('/api/ai/write/<task_id>', methods=['GET'])
@@ -1230,48 +420,32 @@ def get_writing_task(task_id):
 def continue_writing(task_id):
     data = request.json or {}
     model_config = data.get('model_config', {})
-    
     task_id_new = str(uuid.uuid4())
-    
-    # 继承原任务的章节摘要
+
     prev_summaries = []
     if task_id in writing_tasks:
         prev_summaries = writing_tasks[task_id].get('chapter_summaries', [])
-    
-    writing_tasks[task_id_new] = {
-        'status': 'pending',
-        'progress': 0,
-        'output': '',
-        'error': None,
-        'chapter_summaries': list(prev_summaries),
-        '_ts': time.time(),
-    }
-    
+
+    writing_tasks[task_id_new] = {'status': 'pending', 'progress': 0, 'output': '', 'error': None, 'chapter_summaries': list(prev_summaries), '_ts': time.time()}
+
     def do_continue():
         try:
-            # 平台 API 模式检查
             nonlocal_model_config = model_config
             _use_platform_api = data.get('use_platform_api', False)
             if _use_platform_api:
-                lic_pre = _get_current_license()
+                lic_pre = get_current_license()
                 if lic_pre['tier'] == 'free':
                     writing_tasks[task_id_new]['status'] = 'error'
                     writing_tasks[task_id_new]['error'] = '平台 API 仅支持付费版本使用，请先升级'
                     return
-                remaining = _get_remaining_platform_tokens()
+                remaining = get_remaining_tokens(lic_pre)
                 if remaining <= 0:
                     writing_tasks[task_id_new]['status'] = 'error'
                     writing_tasks[task_id_new]['error'] = '平台 API Token 已用完，请使用自己的 Key 或升级'
                     return
-                nonlocal_model_config = {
-                    'type': 'deepseek',
-                    'api_key': PLATFORM_API_KEY,
-                    'base_url': 'https://api.deepseek.com/v1',
-                    'model': PLATFORM_API_MODEL,
-                }
+                nonlocal_model_config = {'type': 'deepseek', 'api_key': PLATFORM_API_KEY, 'base_url': 'https://api.deepseek.com/v1', 'model': PLATFORM_API_MODEL}
 
-            # 写作风格权限检查
-            lic_cont = _get_current_license()
+            lic_cont = get_current_license()
             writing_style = data.get('writing_style', 'literary')
             allowed_styles = lic_cont['info'].get('writing_styles', ['literary'])
             if writing_style not in allowed_styles:
@@ -1282,53 +456,44 @@ def continue_writing(task_id):
             writing_tasks[task_id_new]['status'] = 'running'
             prev_content = data.get('prev_content', '')
             next_chapter_num = data.get('chapter_num', len(prev_summaries) + 1)
-            # 中文数字映射
             CN_NUMS = ['零','一','二','三','四','五','六','七','八','九','十',
                        '十一','十二','十三','十四','十五','十六','十七','十八','十九','二十']
             cn_num = CN_NUMS[next_chapter_num] if next_chapter_num < len(CN_NUMS) else str(next_chapter_num)
-            
+
             instruction = data.get('instruction', '请继续写下一章')
             custom_prompt_cont = data.get('custom_prompt', '')
             custom_prompt_block = f"\n\n【用户自定义约束规则】(以下为附加约束，如有与上述规则冲突，以上述规则为准)\n{custom_prompt_cont}\n" if custom_prompt_cont else ""
             instruction = f"⚠️ CRITICAL: 你的输出必须以「第{cn_num}章」作为章节标题开头，使用中文数字格式。绝对不能写其他章节号。\n\n{instruction}"
-            # 如果是最后一章，追加收尾要求
             total_ch = data.get('total_chapters', 0)
             if total_ch > 0 and next_chapter_num >= total_ch:
                 instruction += '\n\n⚠️ 这是小说的最后一章，必须完整收尾所有主要故事线和人物关系，给出一个合理的结局。不能留坑，不能突然中断。确保故事有一个完整的收束。'
-            style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
 
-            # 根据 anti_ai_level 决定去AI味强度
+            style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
             anti_ai_level = lic_cont['info']['anti_ai_level']
             if anti_ai_level == 'basic':
-                anti_ai_text = """【去AI味要求（基础模式）】
-- 避免使用最常见的AI套话
-- 保持文字自然，不要过度修饰"""
+                anti_ai_text = "【去AI味要求（基础模式）】\n- 避免使用最常见的AI套话\n- 保持文字自然，不要过度修饰"
             elif anti_ai_level == 'full':
                 anti_ai_text = ANTI_AI_PROMPT
             elif anti_ai_level == 'custom':
                 anti_ai_text = ANTI_AI_PROMPT + "\n\n【自定义增强模式】对输出进行多轮自检，确保出版级自然度"
-            
+
             writing_tasks[task_id_new]['progress'] = 10
-            
-            # 用章节摘要替代原始全文上下文，大幅减少重复风险
             summary_text = ''
             for i, s in enumerate(prev_summaries):
                 summary_text += f'第{i+1}章摘要：{s}\n'
             if not summary_text:
-                summary_text = prev_content[-500:]  # 降级：取最后500字
-            
-            # 取上一章最后一段作为衔接
+                summary_text = prev_content[-500:]
+
             last_paragraph = prev_content.strip()[-300:]
-            
+
             anti_repeat_rules = """⛔ 防重复规则（必须严格遵守）：
 1. 不要重复前面章节已出现过的场景、对话、情节
 2. 每个新场景必须有实质性的情节推进
 3. 人物的行动和对话要有新的信息量，不能是已有信息的变体
-4. 避免反复使用相同的描述词汇（如"倒计时"、"原主的记忆"、"穿书前"等）
+4. 避免反复使用相同的描述词汇
 5. 如果感觉情节陷入循环，引入新的冲突元素或外部事件打破僵局
 6. 新章节的每一段文字都要向前推进故事，不能原地打转"""
 
-            # 读取最新流程设定（允许用户修改后生效）
             flow_config = data.get('flow', {})
             flow_parts = []
             wc_keys = [('genre','体裁'),('world','世界观'),('protagonist','主角'),('outline','大纲'),('conflict','冲突'),('style','风格'),('pov','视角'),('setting_detail','细节'),('romance','情感'),('characters','角色')]
@@ -1336,7 +501,6 @@ def continue_writing(task_id):
                 sel = flow_config.get(key, {}).get('selected', {})
                 if sel and sel.get('name'):
                     flow_parts.append(f"【{label}】{sel['name']}：{sel.get('desc','')}")
-            # 章节字数
             chap_cfg = flow_config.get('chapter', {})
             chap_sel = chap_cfg.get('selected', {})
             if chap_sel and chap_sel.get('name'):
@@ -1378,293 +542,131 @@ def continue_writing(task_id):
 
 注意：新章节必须有新的情节发展、新的场景或新的人物互动，绝不能重复前文内容。"""}
             ]
-            
+
             writing_tasks[task_id_new]['progress'] = 30
-            
-            # 续写时加强重复惩罚
             anti_repeat_config = dict(nonlocal_model_config)
             anti_repeat_config['repeat_penalty'] = nonlocal_model_config.get('repeat_penalty', 1.1) + 0.15
             anti_repeat_config['frequency_penalty'] = nonlocal_model_config.get('frequency_penalty', 0.3) + 0.2
             anti_repeat_config['presence_penalty'] = nonlocal_model_config.get('presence_penalty', 0.3) + 0.2
-            
+
             result = call_llm(anti_repeat_config, messages)
             writing_tasks[task_id_new]['progress'] = 70
-            
-            # 自动续写检测
-            result = _auto_continue(anti_repeat_config, messages, result)
-            
-            # 去AI味后处理
-            result = _post_process_text(result, writing_style)
-            
+            result = auto_continue(anti_repeat_config, messages, result)
+            result = post_process_text(result, writing_style)
             writing_tasks[task_id_new]['output'] = result
-            # 检查空内容
+
             if not result or not result.strip():
                 writing_tasks[task_id_new]['status'] = 'error'
                 writing_tasks[task_id_new]['error'] = 'AI 返回内容为空，请重试'
                 writing_tasks[task_id_new]['progress'] = 0
                 return
-            # 记录本章摘要
-            summary = _extract_chapter_summary(result)
+
+            summary = extract_chapter_summary(result)
             if summary:
                 writing_tasks[task_id_new]['chapter_summaries'].append(summary)
             writing_tasks[task_id_new]['progress'] = 100
             writing_tasks[task_id_new]['status'] = 'done'
-            
-            if _use_platform_api:
-                _consume_platform_tokens(max(len(result), len(result) // 3))
 
-            # 增加今日生成计数
-            _increment_daily_gen_count()
-                
+            if _use_platform_api:
+                consume_platform_tokens(get_license_token_id(), max(len(result), len(result) // 3))
+            increment_daily_gen_count()
         except Exception as e:
             import traceback
             print(f'[ERROR] continue_writing failed: {e}', flush=True)
             traceback.print_exc()
             writing_tasks[task_id_new]['status'] = 'error'
             writing_tasks[task_id_new]['error'] = str(e)
-    
+
     t = threading.Thread(target=do_continue)
     t.daemon = True
     t.start()
     return jsonify({'task_id': task_id_new})
 
-# KEY FRAGMENT 4/4
-def _kfrag_4():
-    return b"8505"
-
-
-# ========== 导出验证（防绕过） ==========
+# ========== 导出 ==========
 @app.route('/api/export', methods=['POST'])
 def export_content():
-    """导出前检查版本权限，支持 txt/pdf/epub/docx"""
     data = request.json or {}
-    format = data.get('format', 'txt')
-    
-    lic = _get_current_license()
+    fmt = data.get('format', 'txt')
+    lic = get_current_license()
     allowed = lic['info'].get('export_formats', ['txt'])
-    
-    if format not in allowed:
-        return jsonify({
-            'ok': False,
-            'error': f'当前版本不支持导出为 {format.upper()}，请升级',
-            'tier': lic['tier'],
-            'allowed': allowed
-        }), 403
-    
-    # 权限通过，返回文件内容（由前端触发下载）
-    return jsonify({'ok': True, 'format': format})
+    if fmt not in allowed:
+        return jsonify({'ok': False, 'error': f'当前版本不支持导出为 {fmt.upper()}，请升级', 'tier': lic['tier'], 'allowed': allowed}), 403
+    return jsonify({'ok': True, 'format': fmt})
 
-# ========== 静态文件 ==========
 @app.route('/api/export2', methods=['POST'])
 def export_file():
+    from flask import Response
     data = request.json
     text = data.get('text', '')
     fmt = data.get('format', 'txt')
     title = data.get('title', '小说')
-    
     if not text.strip():
         return jsonify({'error': '内容为空'}), 400
-    
-    # License 验证
-    lic = _get_current_license()
+
+    lic = get_current_license()
     allowed = lic['info'].get('export_formats', ['txt'])
     if fmt not in allowed:
         return jsonify({'error': f'当前版本不支持导出为 {fmt.upper()}，请升级'}), 403
-    
-    # text/plain 直接返回
-    # 对文件名进行URL编码，避免中文等非ASCII字符在HTTP头中出错
-    from urllib.parse import quote
-    safe_title = quote(f'{title}.{fmt}')
 
     if fmt == 'txt':
-        return Response(text, mimetype='text/plain;charset=utf-8',
-                       headers={'Content-Disposition': f"attachment; filename*=UTF-8''{safe_title}"})
-    
-    import zipfile
-    import io
-    
-    buf = io.BytesIO()
-    
-    # ===== DOCX 生成（标准库无依赖版）=====
-    if fmt == 'docx':
-        paragraphs = text.strip().split('\n')
-        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
-            # [Content_Types].xml
-            z.writestr('[Content_Types].xml', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-</Types>''')
-            # _rels/.rels
-            z.writestr('_rels/.rels', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>''')
-            # word/_rels/document.xml.rels
-            z.writestr('word/_rels/document.xml.rels', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>''')
-            # word/styles.xml
-            z.writestr('word/styles.xml', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:style w:type="paragraph" w:styleId="Normal">
-    <w:name w:val="Normal"/>
-    <w:pPr><w:spacing w:line="360" w:lineRule="auto"/></w:pPr>
-    <w:rPr><w:sz w:val="24"/><w:rFonts w:eastAsia="SimSun"/></w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="Title">
-    <w:name w:val="Title"/>
-    <w:basedOn w:val="Normal"/>
-    <w:pPr><w:jc w:val="center"/></w:pPr>
-    <w:rPr><w:b/><w:sz w:val="36"/></w:rPr>
-  </w:style>
-</w:styles>''')
-            # word/document.xml
-            xml_parts = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
-                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
-                '<w:body>']
-            # 标题
-            xml_parts.append(
-                f'<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t xml:space="preserve">{_escape_xml(title)}</w:t></w:r></w:p>')
-            # 空行
-            xml_parts.append('<w:p><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>')
-            # 正文段落
-            for para in paragraphs:
-                para = para.strip()
-                if not para:
-                    xml_parts.append('<w:p><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>')
-                elif para.startswith('## '):
-                    xml_parts.append(
-                        f'<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t xml:space="preserve">{_escape_xml(para[3:])}</w:t></w:r></w:p>')
-                elif para.startswith('# '):
-                    xml_parts.append(
-                        f'<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t xml:space="preserve">{_escape_xml(para[2:])}</w:t></w:r></w:p>')
-                else:
-                    xml_parts.append(
-                        f'<w:p><w:r><w:t xml:space="preserve">{_escape_xml(para)}</w:t></w:r></w:p>')
-            xml_parts.append('</w:body></w:document>')
-            z.writestr('word/document.xml', ''.join(xml_parts))
-        
-        buf.seek(0)
-        return Response(buf.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                       headers={'Content-Disposition': f"attachment; filename*=UTF-8''{safe_title}"})
-    
-    # ===== EPUB 生成（标准库无依赖版）=====
-    if fmt == 'epub':
-        from datetime import datetime
-        now_str = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
-        
-        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
-            # mimetype 必须第一个且不压缩
-            z.writestr('mimetype', 'application/epub+zip', compress_type=zipfile.ZIP_STORED)
-            # META-INF/container.xml
-            z.writestr('META-INF/container.xml', '''<?xml version="1.0" encoding="UTF-8"?>
-<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
-</container>''')
-            # 内容解析
-            chapters = []
-            current_section = ''
-            current_content = []
-            for line in text.split('\n'):
-                if line.startswith('## '):
-                    if current_section:
-                        chapters.append((current_section, '\n'.join(current_content)))
-                    current_section = line[3:].strip()
-                    current_content = []
-                elif line.startswith('# '):
-                    if current_section:
-                        chapters.append((current_section, '\n'.join(current_content)))
-                    current_section = line[2:].strip()
-                    current_content = []
-                else:
-                    current_content.append(line)
-            if current_section:
-                chapters.append((current_section, '\n'.join(current_content)))
-            
-            if not chapters:
-                chapters = [('正文', text)]
-            
-            # 生成章节 XHTML
-            chapter_files = []
-            for i, (sec_title, sec_content) in enumerate(chapters):
-                fn = f'chapter_{i+1:03d}.xhtml'
-                chapter_files.append((fn, sec_title))
-                html_body = ''.join(
-                    f'<p>{_escape_xml(line)}</p>' if line.strip() else '<p>&nbsp;</p>'
-                    for line in sec_content.split('\n')
-                )
-                z.writestr(f'OEBPS/{fn}', f'''<?xml version="1.0" encoding="UTF-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head><title>{_escape_xml(sec_title)}</title></head>
-<body>
-<h1>{_escape_xml(sec_title)}</h1>
-{html_body}
-</body>
-</html>''')
-            
-            # content.opf
-            manifest = '\n'.join(f'<item id="ch{i+1}" href="{fn}" media-type="application/xhtml+xml"/>'
-                               for i, (fn, _) in enumerate(chapter_files))
-            spine = '\n'.join(f'<itemref idref="ch{i+1}"/>'
-                            for i in range(len(chapter_files)))
-            z.writestr('OEBPS/content.opf', f'''<?xml version="1.0" encoding="UTF-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="BookId">
-  <metadata>
-    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">{_escape_xml(title)}</dc:title>
-    <dc:language xmlns:dc="http://purl.org/dc/elements/1.1/">zh-CN</dc:language>
-    <dc:date xmlns:dc="http://purl.org/dc/elements/1.1/">{now_str}</dc:date>
-  </metadata>
-  <manifest>
-    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
-{manifest}
-  </manifest>
-  <spine toc="ncx">
-{spine}
-  </spine>
-</package>''')
-            # toc.ncx
-            nav_points = '\n'.join(
-                f'<navPoint id="nav{i+1}" playOrder="{i+1}"><navLabel><text>{_escape_xml(st)}</text></navLabel><content src="{fn}"/></navPoint>'
-                for i, (fn, st) in enumerate(chapter_files))
-            z.writestr('OEBPS/toc.ncx', f'''<?xml version="1.0" encoding="UTF-8"?>
-<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
-  <head><meta name="dtb:uid" content="storyflow-{int(time.time())}"/></head>
-  <docTitle><text>{_escape_xml(title)}</text></docTitle>
-  <navMap>{nav_points}</navMap>
-</ncx>''')
-        
-        buf.seek(0)
-        return Response(buf.getvalue(), mimetype='application/epub+zip',
-                       headers={'Content-Disposition': f"attachment; filename*=UTF-8''{safe_title}"})
-    
+        content, mimetype, safe_title = generate_txt(text, title)
+        return Response(content, mimetype=mimetype, headers={'Content-Disposition': f"attachment; filename*=UTF-8''{safe_title}"})
+    elif fmt == 'docx':
+        content, mimetype, safe_title = generate_docx(text, title)
+        return Response(content, mimetype=mimetype, headers={'Content-Disposition': f"attachment; filename*=UTF-8''{safe_title}"})
+    elif fmt == 'epub':
+        content, mimetype, safe_title = generate_epub(text, title)
+        return Response(content, mimetype=mimetype, headers={'Content-Disposition': f"attachment; filename*=UTF-8''{safe_title}"})
     return jsonify({'error': f'不支持的格式: {fmt}'}), 400
 
-def _escape_xml(s):
-    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+# ========== 支付 ==========
+@app.route('/api/payment/create-order', methods=['POST'])
+def api_create_payment_order():
+    data = request.json or {}
+    tier = data.get('tier', 'standard')
+    pay_type = data.get('pay_type', 'alipay')
+    result = create_order(tier, pay_type)
+    if 'error' in result:
+        return jsonify(result), 400 if 'ok' not in result else 500
+    return jsonify(result)
 
+@app.route('/api/payment/callback', methods=['POST'])
+def api_payment_callback():
+    result, status = handle_callback(dict(request.form))
+    return result, status
+
+@app.route('/api/payment/check-order', methods=['POST'])
+def api_check_payment_order():
+    data = request.json or {}
+    order_id = data.get('order_id', '')
+    if not order_id:
+        return jsonify({'error': '缺少订单号'}), 400
+    result = check_order(order_id)
+    if 'error' in result:
+        return jsonify(result), 404
+    return jsonify(result)
+
+@app.route('/api/payment/prices', methods=['GET'])
+def api_payment_prices():
+    from storyflow.config import PRICES
+    return jsonify({'ok': True, 'prices': {tier: info for tier, info in PRICES.items()}})
+
+# ========== 首页 ==========
 @app.route('/')
 def index():
-    lic = _get_current_license()
+    from storyflow.config import PRICES
+    lic = get_current_license()
     info = dict(lic['info'])
     if info.get('platform_api_tokens', 0) > 0:
-        remaining = _get_remaining_platform_tokens()
+        remaining = get_remaining_tokens(lic)
         info['platform_tokens_remaining'] = remaining
         info['platform_tokens_total'] = lic['info']['platform_api_tokens']
     license_json = json.dumps({'tier': lic['tier'], 'features': info}, ensure_ascii=False)
-    
     html_path = Path(__file__).parent / 'static' / 'index.html'
     with open(html_path, 'r', encoding='utf-8') as f:
         html = f.read()
-    
-    # 注入 License 到页面（避免异步 fetch 失败）
     inject = f'\n<script>window.__LICENSE__ = {license_json};</script>\n</head>'
     html = html.replace('</head>', inject, 1)
-    
-    from flask import Response
     resp = Response(html, mimetype='text/html')
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     resp.headers['Pragma'] = 'no-cache'
@@ -1673,10 +675,10 @@ def index():
 
 @app.route('/<path:filename>')
 def static_files(filename):
-    return send_from_directory('static', filename)
+    return send_from_directory(str(STATIC_DIR), filename)
 
 if __name__ == '__main__':
-    import sys
-    print("🚀 AI小说写作平台启动中...", flush=True)
-    print("📡 访问地址: http://127.0.0.1:8505", flush=True)
+    print("AI小说写作平台启动中...", flush=True)
+    print("访问地址: http://127.0.0.1:8505", flush=True)
+    print("提示: 所有密钥和配置均从 .env 文件读取", flush=True)
     app.run(host='127.0.0.1', port=8505, threaded=True)

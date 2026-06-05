@@ -805,6 +805,30 @@
   }
   .prompt-preset { font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);color:var(--text2);cursor:pointer;transition:all 0.15s;white-space:nowrap }
   .prompt-preset:hover { background:var(--accent);color:#fff;border-color:var(--accent) }
+
+  /* 支付弹窗 */
+  #payment-modal {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    z-index: 1000; align-items: center; justify-content: center;
+  }
+  #payment-modal.show { display: flex; }
+  .pay-box { background: var(--bg2); border: 1px solid var(--border2); border-radius: 14px; padding: 32px; max-width: 460px; width: 90%; }
+  .pay-box h2 { margin: 0 0 8px; font-size: 18px; display:flex;align-items:center;gap:8px }
+  .pay-box .sub { font-size: 13px; color: var(--text3); margin-bottom: 20px; }
+  .pay-tier { display: flex; gap: 12px; margin-bottom: 20px; }
+  .pay-tier label { flex: 1; padding: 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; text-align: center; transition: all 0.15s; }
+  .pay-tier label.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+  .pay-tier .name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .pay-tier .price { font-size: 20px; font-weight: 700; color: var(--accent); }
+  .pay-tier .price small { font-size: 12px; font-weight: 400; color: var(--text3); }
+  .pay-tier-label { font-size: 12px; color: var(--text3); margin-bottom: 8px; }
+  .pay-btn { width: 100%; padding: 12px; border: none; border-radius: 10px; background: var(--accent); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .pay-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .pay-result { text-align: center; padding: 20px 0; }
+  .pay-result .key { font-family: monospace; font-size: 14px; background: var(--bg); padding: 12px; border-radius: 8px; border: 1px solid var(--border); word-break: break-all; margin: 12px 0; user-select: all; cursor: pointer; }
+  .pay-footer { display: flex; gap: 8px; margin-top: 16px; }
+  .pay-footer button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; font-size: 12px; }
+  .pay-footer button:hover { background: var(--bg2); }
 </style>
 </head>
 <body>
@@ -831,6 +855,7 @@
   <button class="btn btn-secondary btn-icon" onclick="App.saveProject()" title="保存">💾</button>
   <button class="btn btn-secondary" onclick="App.clearCanvas()">🗑️ 清空</button>
   <button class="btn btn-secondary" onclick="App.fitView()">⊞ 适应</button>
+  <button class="btn btn-primary" onclick="showPaymentModal()" style="font-size:12px;white-space:nowrap;margin-left:auto">🔑 购买授权</button>
 
   <div class="spacer"></div>
 
@@ -1027,7 +1052,7 @@
     <!-- 购买链接 -->
     <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--text3);text-align:center">
       🔑 购买 License Key →
-      <a href="https://mbd.pub/search?q=StoryFlow" target="_blank" style="color:var(--accent)">前往面包多搜索「StoryFlow」</a>
+      <a href="https://afdian.net/a/你的爱发电主页ID" target="_blank" style="color:var(--accent)">前往爱发电购买</a>
     </div>
   </div>
 </div>
@@ -1810,7 +1835,7 @@ async function loadPresets() {
       }
       throw new Error('empty response');
     } catch(e) {
-    STATE._writing = false;
+      STATE._writing = false;
       lastErr = e;
       console.warn('[loadPresets] 第' + (attempt+1) + '次失败:', e.message);
       if (attempt < 2) await new Promise(r => setTimeout(r, 500));
@@ -1826,8 +1851,9 @@ async function loadProjects() {
     const r = await fetch('/api/projects');
     STATE.projects = await r.json();
     renderProjectList();
-  } catch(e) {}
+  } catch(e) {
     STATE._writing = false;
+  }
 }
 
 function renderProjectList() {
@@ -1982,7 +2008,16 @@ const App = {
         updateWriteBtn();
       }
       openExecutePanel();
-      
+
+      // 恢复模型配置（优先加载项目保存的配置到 localStorage，保证跨会话持久化）
+      if (proj.settings && proj.settings.modelType) {
+        STATE.modelConfig = proj.settings.model || {};
+        STATE.modelType = proj.settings.modelType;
+        localStorage.setItem('sf_model_config', JSON.stringify(STATE.modelConfig));
+        localStorage.setItem('sf_model_type', STATE.modelType);
+        updateModelBadge();
+      }
+
       toast('📂 项目已加载');
     } catch(e) { toast('❌ 加载失败'); }
     STATE._writing = false;
@@ -2980,7 +3015,7 @@ function pollWritingTask(taskId) {
         document.getElementById('ep-dot').style.background = 'var(--red)';
       }
     } catch(e) {
-    STATE._writing = false;
+      STATE._writing = false;
       clearInterval(interval);
     }
   }, 1000);
@@ -3136,8 +3171,10 @@ async function continueWriting() {
           }
         }
       }
-    } catch(e) { /* 拉取失败就用本地缓存 */ }
-    STATE._writing = false;
+    } catch(e) {
+      /* 拉取失败就用本地缓存 */
+      STATE._writing = false;
+    }
   }
   
   // task_id 为空时（服务器重启后），用占位符确保 URL 有效
@@ -3581,13 +3618,209 @@ window.addEventListener('beforeunload', function(e) {
 });
 
 // ============================================================
-//  启动
+// 支付相关
 // ============================================================
+let payTier = 'standard';
+let payType = 'alipay';
+let payOrderId = '';
+
+function selectPayTier(tier) {
+  payTier = tier;
+  document.querySelectorAll('#pay-step-select .pay-tier:first-child label').forEach(el => el.classList.remove('selected'));
+  document.getElementById('pay-tier-' + tier).classList.add('selected');
+  updatePayBtnText();
+}
+
+function selectPayType(type) {
+  payType = type;
+  document.querySelectorAll('#pay-step-select .pay-tier:last-child label').forEach(el => el.classList.remove('selected'));
+  document.getElementById('pay-type-' + type).classList.add('selected');
+}
+
+function updatePayBtnText() {
+  const price = payTier === 'professional' ? '99' : '29';
+  document.getElementById('pay-btn').textContent = '支付 ¥' + price;
+}
+
+function showPaymentModal() {
+  document.getElementById('payment-modal').classList.add('show');
+  resetPaymentModal();
+}
+
+function closePaymentModal() {
+  document.getElementById('payment-modal').classList.remove('show');
+}
+
+function resetPaymentModal() {
+  document.getElementById('pay-step-select').style.display = 'block';
+  document.getElementById('pay-step-result').style.display = 'none';
+  document.getElementById('pay-qr-img').style.display = 'none';
+  payOrderId = '';
+  selectPayTier(payTier);
+}
+
+async function startPayment() {
+  const btn = document.getElementById('pay-btn');
+  btn.disabled = true; btn.textContent = '生成订单中...';
+  try {
+    const r = await fetch('/api/payment/create-order', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tier: payTier, pay_type: payType}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      payOrderId = d.order_id;
+      // 切换到结果页
+      document.getElementById('pay-step-select').style.display = 'none';
+      document.getElementById('pay-step-result').style.display = 'block';
+      document.getElementById('pay-result-icon').textContent = '⏳';
+      document.getElementById('pay-result-title').textContent = '请扫码支付';
+      document.getElementById('pay-result-desc').textContent = payType === 'alipay' ? '使用支付宝扫码' : '使用微信扫码';
+      document.getElementById('pay-result-key').style.display = 'none';
+
+      // 显示二维码
+      const qrImg = document.getElementById('pay-qr-img');
+      qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(d.qr_url);
+      qrImg.style.display = 'block';
+    } else {
+      toast('❌ 创建订单失败: ' + (d.error || '未知错误'));
+    }
+  } catch (e) {
+    toast('❌ 请求失败: ' + e.message);
+  }
+  btn.disabled = false;
+  updatePayBtnText();
+}
+
+async function checkPaymentOrder() {
+  if (!payOrderId) { toast('❌ 请先创建订单'); return; }
+  const btn = document.querySelector('#pay-result-actions button:first-child');
+  btn.disabled = true; btn.textContent = '查询中...';
+  try {
+    const r = await fetch('/api/payment/check-order', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({order_id: payOrderId}),
+    });
+    const d = await r.json();
+    if (d.ok && d.status === 'paid') {
+      document.getElementById('pay-result-icon').textContent = '✅';
+      document.getElementById('pay-result-title').textContent = '支付成功！';
+      document.getElementById('pay-result-desc').textContent = '您的 License Key：';
+      document.getElementById('pay-qr-img').style.display = 'none';
+      const keyEl = document.getElementById('pay-result-key');
+      keyEl.textContent = d.key;
+      keyEl.style.display = 'block';
+      keyEl.onclick = () => { navigator.clipboard.writeText(d.key).then(() => toast('✅ Key 已复制')); };
+      toast('✅ 支付成功！License Key 已生成');
+    } else if (d.ok && d.status === 'pending') {
+      document.getElementById('pay-result-desc').textContent = '尚未检测到支付，请确认已完成扫码付款';
+    } else {
+      toast('❌ 查询失败: ' + (d.error || '未知错误'));
+    }
+  } catch (e) {
+    toast('❌ 查询失败: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = '我已支付，查询授权码';
+}
+
+// 检查 URL hash 中的支付结果（保留但不再依赖回调）
+function checkPaymentHash() {
+  const hash = window.location.hash;
+  if (hash.includes('payment-success')) {
+    const params = new URLSearchParams(hash.replace('#', ''));
+    const key = params.get('key');
+    const tier = params.get('tier');
+    const name = params.get('name');
+    showPaymentModal();
+    document.getElementById('pay-step-select').style.display = 'none';
+    document.getElementById('pay-step-result').style.display = 'block';
+    document.getElementById('pay-result-icon').textContent = '✅';
+    document.getElementById('pay-result-title').textContent = '支付成功！';
+    document.getElementById('pay-result-desc').textContent = `您的 ${name || '标准版'} License Key：`;
+    const keyEl = document.getElementById('pay-result-key');
+    keyEl.textContent = key;
+    keyEl.style.display = 'block';
+    keyEl.onclick = () => { navigator.clipboard.writeText(key).then(() => toast('✅ Key 已复制')); };
+    window.location.hash = '';
+  } else if (hash.includes('payment-pending')) {
+    const params = new URLSearchParams(hash.replace('#', ''));
+    payOutTradeNo = params.get('out_trade_no') || '';
+    showPaymentModal();
+    document.getElementById('pay-step-select').style.display = 'none';
+    document.getElementById('pay-step-result').style.display = 'block';
+    document.getElementById('pay-result-icon').textContent = '⏳';
+    document.getElementById('pay-result-title').textContent = '支付已提交';
+    document.getElementById('pay-result-desc').textContent = '请确认支付完成，然后点击下方按钮查询授权码';
+    window.location.hash = '';
+  } else if (hash.includes('payment-error')) {
+    toast('❌ 支付异常，请重试');
+    window.location.hash = '';
+  }
+}
+
+// override init to also check payment hash
+const _origInit = init;
+init = function() {
+  _origInit();
+  checkPaymentHash();
+};
+
 init();
 </script>
 
 <!-- 流程指示器 -->
 <div id="flow-indicator"></div>
+
+<!-- 支付弹窗 -->
+<div id="payment-modal">
+  <div class="pay-box" id="pay-box-inner">
+    <div id="pay-step-select">
+      <h2>🔑 购买授权</h2>
+      <div class="sub">购买 License Key 解锁全部功能</div>
+      <div class="pay-tier-label">选择版本</div>
+      <div class="pay-tier">
+        <label id="pay-tier-standard" class="selected" onclick="selectPayTier('standard')">
+          <div class="name">标准版</div>
+          <div class="price">¥29 <small>买断</small></div>
+        </label>
+        <label id="pay-tier-professional" onclick="selectPayTier('professional')">
+          <div class="name">专业版</div>
+          <div class="price">¥99 <small>买断</small></div>
+        </label>
+      </div>
+      <div class="pay-tier-label" style="margin-top:4px">支付方式</div>
+      <div class="pay-tier">
+        <label id="pay-type-alipay" class="selected" onclick="selectPayType('alipay')">
+          <div class="name" style="font-size:13px">支付宝</div>
+        </label>
+        <label id="pay-type-wechat" onclick="selectPayType('wxpay')">
+          <div class="name" style="font-size:13px">微信支付</div>
+        </label>
+      </div>
+      <button class="pay-btn" id="pay-btn" onclick="startPayment()">支付 ¥29</button>
+      <div class="pay-footer">
+        <button onclick="closePaymentModal()">取消</button>
+      </div>
+    </div>
+    <div id="pay-step-result" style="display:none">
+      <div class="pay-result">
+        <div style="font-size:40px;margin-bottom:12px" id="pay-result-icon">⏳</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px" id="pay-result-title">等待支付...</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:16px" id="pay-result-desc">请使用手机扫码完成支付</div>
+        <div style="text-align:center;margin-bottom:12px" id="pay-qr-area">
+          <img id="pay-qr-img" style="width:200px;height:200px;border-radius:8px;display:none">
+        </div>
+        <div class="key" id="pay-result-key" style="display:none"></div>
+      </div>
+      <div class="pay-footer" id="pay-result-actions">
+        <button onclick="checkPaymentOrder()">我已支付，查询授权码</button>
+        <button onclick="resetPaymentModal()">返回</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>

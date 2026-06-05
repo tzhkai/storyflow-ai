@@ -14,7 +14,7 @@
 
 ## 版本对比
 
-| 功能 | 免费版 | 标准版 (¥69) | 专业版 (¥199) |
+| 功能 | 免费版 | 标准版 (¥29) | 专业版 (¥99) |
 |------|--------|-------------|-------------|
 | 流程图节点 | 1 | 5 | 无限 |
 | 每日生成（自备Key） | 3 次 | 50 次 | 无限 |
@@ -87,9 +87,7 @@ ollama pull qwen2.5:7b
 2. 输入购买获得的 License Key（格式 `SF-STD-xxxx` 或 `SF-PRO-xxxx`）
 3. 点击激活，即时生效
 
-> 购买地址：<a href="https://mbd.pub/search?q=StoryFlow">面包多搜索「StoryFlow」</a>（审核中）
-> 
-> 审核通过前如需购买，请联系：**36843155@qq.com**（注明：StoryFlow 标准版/专业版）
+> 购买地址：[爱发电 · StoryFlow](https://afdian.net/a/你的爱发电主页ID)（点击进入）
 
 ## 使用技巧
 
@@ -108,10 +106,18 @@ A: 建议使用 7B+ 参数模型。Qwen2.5-7B-Instruct 是个不错的起点。
 A: 确认 Key 正确，且账户有余额。DeepSeek 需要先充值才能调用 API。
 
 **Q: License Key 丢失？**  
-A: 去购买平台（面包多）查看订单记录，Key 会保留在购买记录中。
+A: 去购买平台（爱发电）查看订单记录，Key 会保留在购买记录中。
 
 **Q: 怎么切换电脑？**  
 A: 在新电脑安装软件，输入同一个 License Key 激活即可（一 Key 一设备）。
+
+## 支持项目
+
+如果你觉得 StoryFlow 对你有帮助，欢迎通过爱发电支持我：
+
+[![爱发电](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fafdian.net%2Fapi%2Fuser%2Fget-profile%3Fuser_id%3D你的爱发电用户ID&query=%24.data.user.name&label=%E7%88%B1%E5%8F%91%E7%94%B5&color=%23946ce6)](https://afdian.net/a/你的爱发电主页ID)
+
+购买 License Key 后可解锁高级功能：平台 API 代调用、多格式导出、无限项目等。
 
 ## 项目结构
 

@@ -1,0 +1,16 @@
+name = "storyflow-api"
+main = "src/index.js"
+compatibility_date = "2025-04-01"
+
+account_id = "2636b35e232e4eee44c3f7333b6a857d"
+
+routes = [
+  { pattern = "api.knexio.xyz", zone_id = "5d655d846a867cb263b865f28af47552" }
+]
+
+[placement]
+mode = "smart"
+
+[[kv_namespaces]]
+binding = "STORE"
+id = "bd263d00c294469eb5d3834137c01cc2"
