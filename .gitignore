@@ -3,6 +3,7 @@ local/
 
 # 数据目录
 data/
+data.bak/
 
 # 环境变量
 .env
