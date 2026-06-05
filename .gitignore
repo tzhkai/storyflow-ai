@@ -5,6 +5,9 @@ local/
 data/
 data.bak/
 
+# 密钥文件
+platform_key.bin
+
 # 环境变量
 .env
 
