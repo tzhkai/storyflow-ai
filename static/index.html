@@ -509,7 +509,7 @@
     background: var(--bg3); border: 1px solid var(--border2);
     transition: all .2s;
   }
-
+  #license-badge:hover { border-color: var(--accent); }
   #license-badge.free { color: var(--text3); }
   #license-badge.standard { color: #10b981; border-color: #10b98140; background: #10b98110; }
   #license-badge.professional { color: #f59e0b; border-color: #f59e0b40; background: #f59e0b10; }
@@ -861,8 +861,408 @@
     </div>
     <div id="project-list" class="dropdown-menu" style="display:none;position:absolute;top:100%;left:0;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:240px;width:100%;max-height:300px;overflow-y:auto;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,0.2)">
       <div id="project-list-items"></div>
+    </div>
+  </div>
+
+  <button class="btn btn-secondary btn-icon" onclick="App.saveProject()" title="保存">💾</button>
+  <button class="btn btn-secondary" onclick="App.clearCanvas()">🗑️ 清空</button>
+  <button class="btn btn-secondary" onclick="App.fitView()">⊞ 适应</button>
+  <button class="btn btn-primary" onclick="showPaymentModal()" style="font-size:12px;white-space:nowrap;margin-left:auto">🔑 购买授权</button>
+
+  <div class="spacer"></div>
+
+  <div id="model-badge" onclick="showModelModal()">
+    <div class="dot" id="model-dot"></div>
+    <span id="model-label">未配置模型</span>
+  </div>
+
+  <div id="license-badge" class="free">
+    <span id="license-icon">🆓</span>
+    <span id="license-text">免费版</span>
+  </div>
+
+  <button class="btn btn-primary" onclick="openExecutePanel()">▶ 开始</button>
+</div>
+
+<!-- 主体 -->
+<div id="main">
+
+  <!-- 左侧面板 -->
+  <div id="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">📐 流程节点</div>
+      <div id="node-palette"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">⚡ 快速模板</div>
+      <div id="quick-templates"></div>
+    </div>
+    <div class="sidebar-section" id="pro-templates-section">
+      <div class="sidebar-title" onclick="toggleProTemplates()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+        👑 Pro版专属模板 <span id="pro-toggle-arrow">▼</span>
+      </div>
+      <div id="pro-templates" style="display:none"></div>
+    </div>
+    <div class="sidebar-section" id="custom-templates-section" style="display:none">
+      <div class="sidebar-title">📌 我的模板</div>
+      <div id="custom-templates-list"></div>
+    </div>
+  </div>
+
+  <!-- 画布 -->
+  <div id="canvas-area">
+    <div id="canvas">
+      <svg id="connections-svg"></svg>
+    </div>
+    <div id="zoom-controls">
+      <button class="zoom-btn" onclick="zoomIn()" title="放大">+</button>
+      <button class="zoom-btn" onclick="zoomReset()" title="重置" style="font-size:11px">1:1</button>
+      <button class="zoom-btn" onclick="zoomOut()" title="缩小">−</button>
+    </div>
+    <div id="empty-state">
+      <div class="es-icon">✨</div>
+      <div class="es-title">拖入节点，开始创作你的故事</div>
+      <div class="es-sub">从左侧拖入节点到画布<br>或选择一个快速模板开始</div>
+    </div>
+  </div>
+
+  <!-- 右侧预设面板 -->
+  <div id="panel" class="hidden">
+    <div class="panel-header">
+      <span class="ph-icon" id="ph-icon">📚</span>
+      <span class="ph-title" id="ph-title">选择预设</span>
+      <button class="btn-close" onclick="closePanel()">✕</button>
+    </div>
+    <div id="panel-content"></div>
+    <div class="panel-footer">
+      <button class="btn btn-secondary" id="btn-ai-gen" onclick="Panel.generateAI()" style="flex:1">
+        ✨ AI 生成更多选项
+      </button>
+      <button class="btn btn-primary" onclick="Panel.confirmSelection()" style="flex:1">
+        ✓ 确认选择
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<!-- 执行面板 -->
+<div id="execute-panel">
+  <div class="ep-header">
+    <span style="font-size:22px">✍️</span>
+    <span class="ep-title">AI 正在创作...</span>
+    <button class="btn btn-secondary btn-icon" onclick="closeExecutePanel()">✕</button>
+  </div>
+  <div id="ep-progress"><div id="ep-progress-bar"></div></div>
+  <div id="ep-output">
+    <div style="color:var(--text3); text-align:center; padding:40px; font-size:14px;">
+      <div style="font-size:48px;margin-bottom:16px">📖</div>
+      点击「开始」后，AI将根据你的设定开始创作...
+    </div>
+  </div>
+  <div class="ep-status" id="ep-status">
+    <div class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--text3);" id="ep-dot"></div>
+    <span id="ep-status-text">就绪</span>
+  </div>
+  <div class="ep-actions">
+    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <span style="font-size:12px;color:var(--text2)">🎨 文风</span>
+      <select id="writing-style-select" style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;outline:none">
+        <option value="literary">文学写实（克制精准）</option>
+        <option value="colloquial">口语化（接地气）</option>
+        <option value="hardcore">硬核简洁（极简叙事）</option>
+        <option value="poetic">诗意浪漫（有节制修辞）</option>
+      </select>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="handleWrite()" style="flex:3;font-size:12px;white-space:nowrap" id="btn-start-write">✍️ 开始写作</button>
+    <button class="btn btn-secondary" onclick="copyOutput()" style="font-size:12px;white-space:nowrap">📋 复制</button>
+    <button class="btn btn-secondary" onclick="exportOutput()" style="font-size:12px;white-space:nowrap">💾 导出</button>
   </div>
 </div>
+
+<!-- License 弹窗 -->
+<div id="license-modal">
+  <div class="license-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:24px">🔑</span>
+        <span style="font-size:18px;font-weight:700">StoryFlow 授权</span>
+      </div>
+      <button onclick="closeLicenseModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:20px">✕</button>
+    </div>
+
+    <!-- 当前状态 -->
+    <div id="license-status" style="background:var(--bg3);border-radius:10px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span id="ls-tier-icon" style="font-size:20px">🆓</span>
+        <span id="ls-tier-name" style="font-weight:700;font-size:16px">免费版</span>
+      </div>
+      <div id="ls-tier-detail" style="font-size:12px;color:var(--text2);line-height:1.8"></div>
+
+    </div>
+
+    <!-- 三档对比 -->
+    <div class="license-tiers">
+      <div class="tier-card" data-tier="free">
+        <div class="tier-name">免费版</div>
+        <div class="tier-price">¥0</div>
+        <div class="tier-features">
+          ✅ 1个流程图<br>
+          ✅ 本地+自带Key云端<br>
+          ✅ txt导出<br>
+          ✅ 每天3次生成<br>
+          ✅ 基础去AI味<br>
+          ✅ 2种写作风格
+        </div>
+      </div>
+      <div class="tier-card" data-tier="standard">
+        <div class="tier-name">标准版</div>
+        <div class="tier-price">¥69 <small>买断</small></div>
+        <div class="tier-features">
+          ✅ 无限流程图<br>
+          ✅ 本地+云端模型<br>
+          ✅ 无限生成<br>
+          ✅ txt+PDF导出<br>
+          ✅ 完整去AI味<br>
+          ✅ 4种写作风格
+        </div>
+      </div>
+      <div class="tier-card" data-tier="professional">
+        <div class="tier-name">专业版</div>
+        <div class="tier-price">¥189 <small>买断</small></div>
+        <div class="tier-features">
+          ✅ 无限流程图<br>
+          ✅ 本地+云端模型<br>
+          ✅ 无限生成<br>
+          ✅ 全格式导出<br>
+          ✅ 自定义去AI味<br>
+          ✅ 自定义风格
+        </div>
+      </div>
+    </div>
+
+    <!-- 激活输入 -->
+    <div id="license-activate-section" style="margin-top:16px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px">📝 输入 License Key</div>
+      <div style="display:flex;gap:8px">
+        <input id="license-key-input" type="text" placeholder="SF-STD-XXXX-XXXX 或 SF-PRO-XXXX-XXXX"
+               style="flex:1;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;font-size:13px;font-family:monospace;outline:none">
+        <button class="btn btn-primary" onclick="activateLicense()">激活</button>
+      </div>
+      <div id="license-error" style="color:#ef4444;font-size:12px;margin-top:6px;display:none"></div>
+      <div id="license-success" style="color:#10b981;font-size:12px;margin-top:6px;display:none"></div>
+    </div>
+
+    <!-- 退回免费版 -->
+    <div id="license-deactivate-section" style="margin-top:12px;display:none">
+      <button class="btn btn-secondary" onclick="deactivateLicense()" style="font-size:12px;width:100%">
+        ↩ 退回免费版
+      </button>
+    </div>
+
+    <!-- 购买链接 -->
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--text3);text-align:center">
+      🔑 购买 License Key →
+      <a href="https://ifdian.net/a/knexio" target="_blank" style="color:var(--accent)">前往爱发电购买</a>
+    </div>
+  </div>
+</div>
+
+<!-- 模型配置弹窗 -->
+<div id="model-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span style="font-size:22px">🤖</span>
+      <span class="modal-title">AI 模型配置</span>
+      <button class="btn-close" onclick="closeModelModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="model-tabs">
+        <div class="model-tab active" onclick="selectModelTab('ollama', this)">🦙 Ollama（本地）</div>
+        <div class="model-tab" onclick="selectModelTab('lmstudio', this)">🔬 LM Studio</div>
+        <div class="model-tab" onclick="selectModelTab('openai', this)">🌐 OpenAI</div>
+        <div class="model-tab" onclick="selectModelTab('deepseek', this)">🌊 DeepSeek</div>
+        <div class="model-tab" onclick="selectModelTab('tongyi', this)">🌟 通义千问</div>
+        <div class="model-tab" onclick="selectModelTab('custom', this)">⚙️ 自定义</div>
+      </div>
+
+      <div id="model-config-ollama">
+        <div class="form-group">
+          <label class="form-label">服务地址</label>
+          <input class="form-input" id="ollama-url" value="http://localhost:11434" placeholder="http://localhost:11434">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型名称</label>
+          <input class="form-input" id="ollama-model" value="qwen2.5:7b" placeholder="qwen2.5:7b">
+          <div style="font-size:11px;color:var(--text3);margin-top:5px">测试连接后自动填充可用模型</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">可用模型（测试后刷新）</label>
+          <select class="form-select" id="ollama-model-select" onchange="document.getElementById('ollama-model').value=this.value">
+            <option value="">-- 先测试连接 --</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="model-config-lmstudio" style="display:none">
+        <div class="form-group">
+          <label class="form-label">服务地址</label>
+          <input class="form-input" id="lmstudio-url" value="http://localhost:11435" placeholder="http://localhost:11435">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型 ID</label>
+          <input class="form-input" id="lmstudio-model" placeholder="选择或输入模型ID">
+          <select class="form-select" id="lmstudio-model-select" style="margin-top:6px" onchange="document.getElementById('lmstudio-model').value=this.value">
+            <option value="">-- 先测试连接 --</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="model-config-openai" style="display:none">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" id="openai-key" type="password" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型</label>
+          <select class="form-select" id="openai-model">
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4o-mini">GPT-4o-mini</option>
+            <option value="gpt-4-turbo">GPT-4-turbo</option>
+            <option value="gpt-3.5-turbo">GPT-3.5-turbo</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="model-config-deepseek" style="display:none">
+        <div class="form-group" id="platform-api-row" style="margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text1)">
+            <input type="checkbox" id="use-platform-api" onchange="togglePlatformApi()" style="width:16px;height:16px;cursor:pointer">
+            🎁 使用平台提供的 DeepSeek API（标准版以上可用）
+          </label>
+          <div id="platform-api-note" style="display:none;font-size:11px;color:var(--green);margin-top:4px;margin-left:24px">
+            ✅ 已启用平台 API，无需自己填 Key · 模型：deepseek-v4-flash<br>
+            💡 也可切换至其他模型（OpenAI / Ollama 等）自行填写 Key
+          </div>
+          <div id="platform-api-upgrade" style="display:none;font-size:11px;color:var(--orange);margin-top:4px;margin-left:24px">
+            🔒 平台 API 仅标准版以上可用，请 <a href="#" onclick="showLicenseModal();return false" style="color:var(--blue)">升级 License</a>
+          </div>
+        </div>
+        <div class="form-group" id="deepseek-key-row">
+          <label class="form-label">API Key</label>
+          <input class="form-input" id="deepseek-key" type="password" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型</label>
+          <select class="form-select" id="deepseek-model">
+            <option value="deepseek-v4-flash">deepseek-v4-flash（推荐，速度快成本低）</option>
+            <option value="deepseek-v4-pro">deepseek-v4-pro（高质量，慢一些）</option>
+          </select>
+        </div>
+        <input type="hidden" id="deepseek-url" value="https://api.deepseek.com/v1">
+      </div>
+
+      <div id="model-config-tongyi" style="display:none">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" id="tongyi-key" type="password" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型</label>
+          <select class="form-select" id="tongyi-model">
+            <option value="qwen-max">qwen-max</option>
+            <option value="qwen-plus">qwen-plus</option>
+            <option value="qwen-turbo">qwen-turbo</option>
+            <option value="qwen-long">qwen-long（超长文本）</option>
+          </select>
+        </div>
+        <input type="hidden" id="tongyi-url" value="https://dashscope.aliyuncs.com/compatible-mode/v1">
+      </div>
+
+      <div id="model-config-custom" style="display:none">
+        <div class="form-group">
+          <label class="form-label">API 地址（Base URL）</label>
+          <input class="form-input" id="custom-url" placeholder="https://your-api.com/v1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" id="custom-key" type="password" placeholder="Bearer token">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型名称</label>
+          <input class="form-input" id="custom-model" placeholder="model-name">
+        </div>
+      </div>
+
+      <!-- 通用推理参数 -->
+      <div class="form-section-title">⚙️ 推理参数（所有模型通用）</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px;">
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">max_tokens（最大输出长度）</label>
+          <input class="form-input" id="generic-max-tokens" type="number" value="4096" min="256" max="32768" step="256" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">num_ctx（上下文窗口，Ollama）</label>
+          <input class="form-input" id="generic-num-ctx" type="number" value="4096" min="512" max="131072" step="512" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">temperature（创造性）<span style="color:var(--text3)">0~2</span></label>
+          <input class="form-input" id="generic-temperature" type="number" value="0.8" min="0" max="2" step="0.05" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">top_p（核采样）<span style="color:var(--text3)">0~1</span></label>
+          <input class="form-input" id="generic-top-p" type="number" value="0.95" min="0" max="1" step="0.05" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">repeat_penalty（重复惩罚）<span style="color:var(--text3)">1~2</span></label>
+          <input class="form-input" id="generic-repeat-penalty" type="number" value="1.1" min="1" max="2" step="0.05" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">frequency_penalty（频率惩罚）<span style="color:var(--text3)">-2~2</span></label>
+          <input class="form-input" id="generic-freq-penalty" type="number" value="0.3" min="-2" max="2" step="0.1" style="padding:5px 8px;font-size:12px">
+        </div>
+
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">presence_penalty（存在惩罚）<span style="color:var(--text3)">-2~2</span></label>
+          <input class="form-input" id="generic-pres-penalty" type="number" value="0.3" min="-2" max="2" step="0.1" style="padding:5px 8px;font-size:12px">
+        </div>
+        <div class="form-group" style="margin-bottom:4px">
+          <label class="form-label" style="font-size:11px">
+            <input type="checkbox" id="generic-prompt-enabled" checked style="vertical-align:middle;margin-right:4px">
+            自定义创作提示 <span style="color:var(--text3)">(选填，用于补充节点卡覆盖不到的写作偏好，不影响模板核心设定)</span>
+          </label>
+          <textarea id="generic-prompt" rows="3" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text1);resize:vertical;box-sizing:border-box" placeholder="例如：不要悲剧结局、不涉及政治、每章结尾留悬念"></textarea>
+          <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
+            <button class="prompt-preset" data-preset="no_tragedy">✅ 不要悲剧</button>
+            <button class="prompt-preset" data-preset="no_politics">🚫 不涉敏感</button>
+            <button class="prompt-preset" data-preset="clean_read">👶 全年龄向</button>
+            <button class="prompt-preset" data-preset="chapter_hook">📝 格式规范</button>
+            <button class="prompt-preset" data-preset="clear">🗑️ 清空</button>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;padding:4px 8px;background:var(--bg2);border-radius:6px">
+        💡 小模型建议：temperature 0.7~0.9, repeat_penalty 1.15~1.25, 提高 frequency/presence_penalty 到 0.5~0.8 可减少重复
+      </div>
+
+      <div id="test-result-area"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="testModelConnection()">🔌 测试连接</button>
+      <button class="btn btn-primary" onclick="saveModelConfig()">✓ 保存配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
 
 <!-- 自定义对话框 -->
 <div id="dialog-overlay">
@@ -986,13 +1386,15 @@ function toggleProTemplates() {
 
 
 async function applyTemplate(tid) {
-  // 如果有现有节点，先确认是否清空
+  const t = QUICK_TEMPLATES.find(x => x.id === tid);
+  if (!t) return;
+  if (t.pro && STATE.license.tier !== 'professional') { toast('🔒 此模板仅专业版可用'); return; }
+  
   const existingCount = Object.keys(STATE.nodes).length;
   if (existingCount > 0) {
     if (!await showConfirm('应用模板将清空当前画布，是否继续？')) return;
   }
   
-  // 清空
   document.getElementById('canvas').querySelectorAll('.node').forEach(el => el.remove());
   document.getElementById('canvas').querySelectorAll('.connection-line').forEach(el => el.remove());
   STATE.nodes = {};
@@ -1533,8 +1935,8 @@ const App = {
     updateFlowIndicator();
   },
 
-  async clearCanvas(skipConfirm) {
-    if (!skipConfirm && !await showConfirm('确定清空画布？')) return;
+  async clearCanvas(silent = false) {
+    if (!silent && !await showConfirm('确定清空画布？')) return;
     Object.keys(STATE.nodes).forEach(id => document.getElementById(id)?.remove());
     STATE.nodes = {};
     STATE.edges = [];
@@ -1705,6 +2107,7 @@ const App = {
     await App.clearCanvas(true);
 
     const templates = {
+      xianxia: {
         name: '仙侠修真小说',
         nodes: [
           { type: 'genre', x: 60, y: 60, selected: { id:'xianxia', name:'仙侠修真', desc:'修仙问道，飞升成仙', tags:['修炼','丹药','飞剑','宗门'] }},
@@ -3234,6 +3637,78 @@ window.addEventListener('beforeunload', function(e) {
 });
 
 // ============================================================
+// 支付相关（爱发电）
+// ============================================================
+let payTier = 'standard';
+
+function selectPayTier(tier) {
+  payTier = tier;
+  document.querySelectorAll('#pay-step-select .pay-tier label').forEach(el => el.classList.remove('selected'));
+  document.getElementById('pay-tier-' + tier).classList.add('selected');
+}
+
+function showPaymentModal() {
+  document.getElementById('payment-modal').classList.add('show');
+}
+
+function closePaymentModal() {
+  document.getElementById('payment-modal').classList.remove('show');
+  document.getElementById('afdian-order-status').textContent = '';
+}
+
+function gotoAfdian() {
+  const url = payTier === 'professional'
+    ? 'https://ifdian.net/item/7c6172a0609d11f1b81952540025c377'
+    : 'https://ifdian.net/item/626305d060a211f19c6c52540025c377';
+  window.open(url, '_blank');
+}
+
+async function activateByOrder() {
+  const orderId = document.getElementById('afdian-order-input').value.trim();
+  if (!orderId) { toast('请输入订单号'); return; }
+  const statusEl = document.getElementById('afdian-order-status');
+  statusEl.textContent = '验证中...';
+  statusEl.style.color = 'var(--text3)';
+  try {
+    const r = await fetch('/api/license/activate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({order_id: orderId}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      statusEl.textContent = `✅ ${d.message || '激活成功！'}`;
+      statusEl.style.color = 'var(--green)';
+      loadLicense();
+      closePaymentModal();
+    } else {
+      statusEl.textContent = `❌ ${d.error || '激活失败'}`;
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch (e) {
+    statusEl.textContent = `❌ 请求失败: ${e.message}`;
+    statusEl.style.color = 'var(--red)';
+  }
+}
+
+// 检查 URL hash 中的支付结果
+function checkPaymentHash() {
+  const hash = window.location.hash;
+  if (hash.includes('payment-success')) {
+    const params = new URLSearchParams(hash.replace('#', ''));
+    const key = params.get('key');
+    const tier = params.get('tier');
+    const name = params.get('name');
+    toast(`✅ 支付成功！${name || '标准版'} 已激活`);
+    loadLicense();
+    window.location.hash = '';
+  } else if (hash.includes('payment-error')) {
+    toast('❌ 支付异常，请重试');
+    window.location.hash = '';
+  }
+}
+
+// ============================================================
 // 自定义对话框（替代原生 alert/confirm/prompt）
 // ============================================================
 let _dialogResolve = null;
@@ -3277,7 +3752,6 @@ function dialogCancel() {
   if (_dialogResolve) _dialogResolve(null);
 }
 
-// 回车提交
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('dialog-overlay').classList.contains('show')) {
     const input = document.getElementById('dialog-input');
@@ -3285,74 +3759,12 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// ============================================================
-// 支付相关（爱发电）
-// ============================================================
-let payTier = 'standard';
-
-function selectPayTier(tier) {
-  payTier = tier;
-  document.querySelectorAll('#pay-step-select .pay-tier label').forEach(el => el.classList.remove('selected'));
-  const el = document.getElementById('pay-tier-' + tier);
-  if (el) el.classList.add('selected');
-}
-
-function showPaymentModal() {
-  document.getElementById('payment-modal').classList.add('show');
-  document.getElementById('afdian-order-input').value = '';
-  document.getElementById('afdian-order-status').textContent = '';
-}
-
-function closePaymentModal() {
-  document.getElementById('payment-modal').classList.remove('show');
-}
-
-const AFDIAN_URLS = {
-  standard: 'https://ifdian.net/item/626305d060a211f19c6c52540025c377',
-  professional: 'https://ifdian.net/item/7c6172a0609d11f1b81952540025c377',
+// override init to also check payment hash
+const _origInit = init;
+init = function() {
+  _origInit();
+  checkPaymentHash();
 };
-
-function gotoAfdian() {
-  const url = AFDIAN_URLS[payTier] || AFDIAN_URLS.standard;
-  window.open(url, '_blank');
-  toast('✅ 请在爱发电完成付款，然后复制订单号回来激活');
-}
-
-async function activateByOrder() {
-  const input = document.getElementById('afdian-order-input');
-  const status = document.getElementById('afdian-order-status');
-  const orderId = input.value.trim();
-  if (!orderId) { status.textContent = '请输入订单号'; return; }
-
-  status.textContent = '验证中...';
-  try {
-    const r = await fetch('https://api.knexio.xyz/api/v1/afdian/activate', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({order_id: orderId}),
-    });
-    const d = await r.json();
-    if (!d.ok) {
-      status.textContent = '订单号无效，请确认已付款并复制正确的订单号';
-      return;
-    }
-    const act = await fetch('/api/license/activate', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({key: d.key}),
-    });
-    const ad = await act.json();
-    if (ad.ok) {
-      toast(`🎉 您已成为 ${ad.info.name} 用户！`);
-      updateLicenseBadge();
-      closePaymentModal();
-    } else {
-      status.textContent = '激活失败: ' + (ad.error || '未知错误');
-    }
-  } catch (e) {
-    status.textContent = '验证服务不可达，请稍后重试';
-  }
-}
 
 init();
 </script>
@@ -3365,16 +3777,16 @@ init();
   <div class="pay-box" id="pay-box-inner">
     <div id="pay-step-select">
       <h2>🔑 购买授权</h2>
-      <div class="sub">前往爱发电购买，付款后输入订单号激活</div>
+      <div class="sub">选择版本后前往爱发电购买</div>
       <div class="pay-tier-label">选择版本</div>
-      <div class="pay-tier" style="flex-direction:column;gap:8px">
-        <label id="pay-tier-standard" class="selected" onclick="selectPayTier('standard')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px">
-          <span><span style="font-size:18px">⭐</span> 标准版</span>
-          <span style="font-weight:700;color:var(--accent)">¥69 <small style="font-weight:400;color:var(--text3)">买断</small></span>
+      <div class="pay-tier">
+        <label id="pay-tier-standard" class="selected" onclick="selectPayTier('standard')">
+          <div class="name">标准版</div>
+          <div class="price">¥69 <small>买断</small></div>
         </label>
-        <label id="pay-tier-professional" onclick="selectPayTier('professional')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px">
-          <span><span style="font-size:18px">👑</span> 专业版</span>
-          <span style="font-weight:700;color:var(--accent)">¥189 <small style="font-weight:400;color:var(--text3)">买断</small></span>
+        <label id="pay-tier-professional" onclick="selectPayTier('professional')">
+          <div class="name">专业版</div>
+          <div class="price">¥189 <small>买断</small></div>
         </label>
       </div>
       <button class="pay-btn" onclick="gotoAfdian()">前往爱发电购买</button>
