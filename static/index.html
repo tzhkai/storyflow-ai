@@ -854,7 +854,7 @@
   <input id="project-name-input" type="text" value="新小说项目" placeholder="项目名称" oninput="document.getElementById('current-project-name').textContent=this.value||'新小说项目'">
   <div class="sep"></div>
 
-  <div id="project-dropdown" style="position:relative">
+  <div id="project-dropdown" tabindex="-1" onblur="setTimeout(()=>closeProjectList(),150)" style="position:relative">
     <div id="project-trigger" onclick="toggleProjectList()" style="display:flex;align-items:center;cursor:pointer;padding:4px 10px;border-radius:6px;background:var(--bg2);border:1px solid var(--border);font-size:13px;min-width:240px">
       <span id="current-project-name">📁 我的项目</span>
       <span style="margin-left:auto">▾</span>
