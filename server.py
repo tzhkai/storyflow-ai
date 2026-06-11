@@ -414,7 +414,6 @@ def start_writing():
             messages = [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': user_prompt}]
             result = call_llm(model_config, messages)
             writing_tasks[task_id]['progress'] = 60
-            result = auto_continue(model_config, messages, result)
             result = post_process_text(result, writing_style)
             writing_tasks[task_id]['output'] = result
             summary = extract_chapter_summary(result)

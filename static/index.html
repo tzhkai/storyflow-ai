@@ -1336,7 +1336,7 @@ const QUICK_TEMPLATES = [
   { id:'t_horror', name:'悬疑推理', icon:'🔍', pro:false, flow:{genre:'horror',world:'w4',protagonist:'p5',outline:'o4',conflict:'c6',style:'s2',chapter:'ch2',pov:'pov4',setting_detail:'sd5',characters:'cr6'} },
   { id:'t_apocalypse', name:'末世求生', icon:'🧟', pro:false, flow:{genre:'apocalypse',world:'w5',protagonist:'p1',outline:'o9',conflict:'c1',style:'s1',chapter:'ch3',pov:'pov2',setting_detail:'sd2',characters:'cr7'} },
   { id:'t_campus', name:'青春校园', icon:'🎒', pro:true, flow:{genre:'campus',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',style:'s6',chapter:'ch2',pov:'pov1',setting_detail:'sd4',characters:'cr2'} },
-  { id:'t_bl', name:'男男之恋', icon:'🌈', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p5',outline:'o8',conflict:'c7',romance:'bl_deep',style:'s8',chapter:'ch2',pov:'pov2',setting_detail:'sd4',characters:'cr4'} },
+  { id:'t_bl', name:'男男之恋', icon:'🌈', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p2',outline:'o8',conflict:'c7',romance:'bl_deep',style:'s8',chapter:'ch2',pov:'pov2',setting_detail:'sd4',characters:'cr4'} },
   { id:'t_gl', name:'女女之恋', icon:'🌸', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p8',outline:'o8',conflict:'c7',romance:'gl_slow',style:'s6',chapter:'ch2',pov:'pov2',setting_detail:'sd4',characters:'cr4'} },
   { id:'t_age_gap', name:'姐弟恋', icon:'⏳', pro:true, flow:{genre:'romance',world:'w4',protagonist:'p5',outline:'o8',conflict:'c6',romance:'age_younger',style:'s6',chapter:'ch2',pov:'pov2',setting_detail:'sd4',characters:'cr4'} },
   { id:'t_forbidden', name:'禁忌之恋', icon:'🌹', pro:true, flow:{genre:'romance',world:'w7',protagonist:'p9',outline:'o8',conflict:'c7',romance:'forb_office',style:'s7',chapter:'ch2',pov:'pov2',setting_detail:'sd5',characters:'cr4'} },
@@ -1526,6 +1526,25 @@ async function applyTemplate(tid) {
       };
       const d = CHAR_MAP[node.selected.name];
       if (d) { STATE.nodes[id].char_name = d[0]; STATE.nodes[id].char_role = d[1]; }
+    }
+  }
+  
+  // 根据恋爱类型调整角色默认名字/性别
+  const romanceNode = Object.values(STATE.nodes).find(n => n.type === 'romance' && n.selected);
+  if (romanceNode) {
+    const rid = romanceNode.selected.id;
+    for (const [id, node] of Object.entries(STATE.nodes)) {
+      if (rid === 'bl_deep' && node.type === 'characters' && node.char_name === '陆雪琪') {
+        STATE.nodes[id].char_name = '陆辰';
+        STATE.nodes[id].char_role = '恋人';
+      }
+      if (rid === 'heal_love' && node.type === 'characters' && node.char_name === '陆雪琪') {
+        const protNode = Object.values(STATE.nodes).find(n => n.type === 'protagonist');
+        if (protNode && protNode.char_name === '苏晚晴') {
+          STATE.nodes[id].char_name = '顾言';
+          STATE.nodes[id].char_role = '恋人';
+        }
+      }
     }
   }
   
