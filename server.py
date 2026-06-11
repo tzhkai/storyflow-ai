@@ -320,16 +320,42 @@ def start_writing():
         try:
             writing_tasks[task_id]['status'] = 'running'
             flow_config = data.get('flow', {})
-            genre = flow_config.get('genre', {}).get('selected', {})
-            world = flow_config.get('world', {}).get('selected', {})
-            protagonist = flow_config.get('protagonist', {}).get('selected', {})
-            outline = flow_config.get('outline', {}).get('selected', {})
-            conflict = flow_config.get('conflict', {}).get('selected', {})
-            style = flow_config.get('style', {}).get('selected', {})
-            chapter = flow_config.get('chapter', {}).get('selected', {})
-            pov = flow_config.get('pov', {}).get('selected', {})
-            setting_detail = flow_config.get('setting_detail', {}).get('selected', {})
+
+            NODE_LABELS = {
+                'genre':'体裁', 'world':'世界观', 'protagonist':'主角', 'outline':'故事大纲',
+                'conflict':'核心冲突', 'style':'写作风格', 'chapter':'章节规划', 'pov':'叙事视角',
+                'setting_detail':'细节设定', 'romance':'情感关系', 'characters':'角色设定',
+                'custom':'自定义设定',
+            }
+
+            flow_parts = []
+            char_name_parts = []
+            wc = 2500
+            cc = 30
             custom_notes = flow_config.get('custom_notes', '')
+            for key, node_data in flow_config.items():
+                if key == 'custom_notes':
+                    continue
+                sel = node_data.get('selected', {})
+                label = NODE_LABELS.get(key, key)
+                if sel and sel.get('name'):
+                    flow_parts.append(f"【{label}】{sel['name']}：{sel.get('desc','')}")
+                elif sel and sel.get('desc'):
+                    flow_parts.append(f"【{label}】{sel.get('desc','')}")
+                if node_data.get('char_name'):
+                    cn = node_data['char_name']
+                    cr = node_data.get('char_role', '')
+                    cd = node_data.get('char_desc', '')
+                    detail = '，'.join(filter(None, [cr, cd]))
+                    name_for_label = sel.get('name', key) if sel else key
+                    char_name_parts.append(f"【{name_for_label}姓名】{cn}{f'（{detail}）' if detail else ''}")
+                if node_data.get('word_count'):
+                    wc = node_data['word_count']
+                if node_data.get('chapter_count'):
+                    cc = node_data['chapter_count']
+
+            flow_text = '\n'.join(flow_parts) if flow_parts else ''
+            char_name_text = '\n'.join(char_name_parts) if char_name_parts else ''
             custom_prompt = data.get('custom_prompt', '')
             writing_style = data.get('writing_style', 'literary')
             style_rules = STYLE_RULES.get(writing_style, STYLE_RULES['literary'])
@@ -366,32 +392,16 @@ def start_writing():
             if custom_prompt:
                 system_prompt += f"\n\n【用户自定义约束规则】(以下为附加约束，如有与上述规则冲突，以上述规则为准)\n{custom_prompt}\n"
 
-            char_names = []
-            if protagonist.get('char_name'):
-                char_names.append(f"主角：{protagonist['char_name']}")
-            char_cfg = flow_config.get('characters', {})
-            if char_cfg.get('char_name'):
-                cn = char_cfg.get('selected', {}).get('name', '角色')
-                char_names.append(f"{cn}：{char_cfg['char_name']}")
-            char_name_text = '\n'.join(char_names) if char_names else ''
-
             user_prompt = f"""请根据以下设定创作小说：
 
-【体裁】{genre.get('name', '')}：{genre.get('desc', '')}
-【世界观】{world.get('name', '')}：{world.get('desc', '')}
-【主角】{protagonist.get('name', '')}：{protagonist.get('desc', '')}
-【故事大纲】{outline.get('name', '')}：{outline.get('desc', '')}
-【核心冲突】{conflict.get('name', '')}：{conflict.get('desc', '')}
-【写作风格】{style.get('name', '')}：{style.get('desc', '')}
-【章节规划】{chapter.get('name', '')}：{chapter.get('desc', '')}
-【字数设定】每章约{flow_config.get('chapter', {}).get('word_count', 2500)}字，共{flow_config.get('chapter', {}).get('chapter_count', 30)}章
-【叙事视角】{pov.get('name', '')}：{pov.get('desc', '')}
-【细节设定】{setting_detail.get('name', '')}：{setting_detail.get('desc', '')}
-{char_name_text}
+{flow_text}
+
+【字数设定】每章约{wc}字，共{cc}章
+{char_name_text if char_name_text else ''}
 【补充说明】{custom_notes}
 
-⚠️ 人物姓名对照（必须严格遵守，不得更改）：
-{char_name_text if char_names else '使用设定中默认的角色名'}
+⚠️ 人物姓名必须严格遵守，不得自行更改或创造新名字。设定中的人物必须使用指定姓名。
+{char_name_text if char_name_text else '使用设定中默认的角色名'}
 
 请先写出：
 1. 小说标题（3个备选）
@@ -516,6 +526,10 @@ def continue_writing(task_id):
                 sel = flow_config.get(key, {}).get('selected', {})
                 if sel and sel.get('name'):
                     flow_parts.append(f"【{label}】{sel['name']}：{sel.get('desc','')}")
+                cn = flow_config.get(key, {}).get('char_name')
+                if cn:
+                    cr = flow_config.get(key, {}).get('char_role', '')
+                    flow_parts.append(f"【{label}姓名】{cn}{f'（{cr}）' if cr else ''}")
             chap_cfg = flow_config.get('chapter', {})
             chap_sel = chap_cfg.get('selected', {})
             if chap_sel and chap_sel.get('name'):
